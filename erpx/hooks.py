@@ -1,9 +1,14 @@
 app_name = "erpx"
 app_title = "erpx"
 app_publisher = "Timur Matsiev"
-app_description = "Mods for ERPnext"
-app_email = "timuryn@gmail.com"
+app_description = "mods for erpnext"
+app_email = "timur@dippelwerbung.de"
 app_license = "mit"
+
+app_include_js = [
+    "assets/erpx/js/customer_quick_entry.js",
+]
+
 
 # Apps
 # ------------------
