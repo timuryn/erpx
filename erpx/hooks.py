@@ -9,6 +9,16 @@ app_include_js = [
     "assets/erpx/js/customer_quick_entry.js",
 ]
 
+doc_events = {
+    "Email Queue": {
+        "on_update": "erpx.email_queue.check_and_send_email"
+    }
+}
+
+# Whitelisted Methods
+# whitelisted_methods = {
+#    "erpx.api.download_sales_invoice_pdfs.download_selected_sales_invoices": "erpx.api.download_sales_invoice_pdfs.download_selected_sales_invoices"
+# }
 
 # Apps
 # ------------------
