@@ -7,11 +7,12 @@ app_license = "mit"
 
 app_include_js = [
     "assets/erpx/js/customer_quick_entry.js",
+    "assets/erpx/js/item_quick_entry.js"
 ]
 
 doc_events = {
     "Email Queue": {
-        "on_update": "erpx.email_queue.check_and_send_email"
+        "after_insert": "erpx.email.email_queue.check_and_send_email"
     }
 }
 
