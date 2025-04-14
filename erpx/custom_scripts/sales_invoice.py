@@ -1,7 +1,7 @@
 # erpx/custom_scripts/sales_invoice.py
 
 import frappe
-from frappe.utils import getdate
+from frappe.utils import getdate, nowdate
 
 @frappe.whitelist()
 def allow_edit_submitted_invoice(invoice_id):
@@ -9,8 +9,16 @@ def allow_edit_submitted_invoice(invoice_id):
     invoice = frappe.get_doc("Sales Invoice", invoice_id)
 
     if invoice.docstatus == 1:
+        # Store original posting_date and posting_time
+        original_posting_date = invoice.posting_date
+        original_posting_time = invoice.posting_time
+
         # Temporarily set to Draft
         invoice.db_set("docstatus", 0)
+
+        # Reapply original posting date/time so they don't change
+        invoice.db_set("posting_date", original_posting_date)
+        invoice.db_set("posting_time", original_posting_time)
 
         # Unlock child table fields
         for item in invoice.items:
@@ -49,13 +57,13 @@ def finalize_invoice(invoice_id):
         # Submit the Sales Invoice
         invoice.submit()
 
-        # Convert due_date and posting_date to date objects
-        if invoice.due_date and invoice.posting_date:
+        # Convert due_date to date object
+        if invoice.due_date:
             due_date_obj = getdate(invoice.due_date)
-            posting_date_obj = getdate(invoice.posting_date)
+            today_obj = getdate(nowdate())
 
-            # Compare due date to posting date
-            if due_date_obj >= posting_date_obj:
+            # Compare due date to today's date
+            if due_date_obj >= today_obj:
                 new_status = "Unpaid"
             else:
                 new_status = "Overdue"
@@ -64,4 +72,3 @@ def finalize_invoice(invoice_id):
             invoice.db_set("status", new_status)
 
     return invoice.status
-
