@@ -17,6 +17,10 @@ doc_events = {
     }
 }
 
+doctype_js = {
+    "Project": "public/js/project_email_modal.js"
+}
+
 # Whitelisted Methods
 # whitelisted_methods = {
 #    "erpx.api.download_sales_invoice_pdfs.download_selected_sales_invoices": "erpx.api.download_sales_invoice_pdfs.download_selected_sales_invoices"
