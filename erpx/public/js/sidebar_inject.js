@@ -60,7 +60,7 @@ function injectSidebarMenu() {
             { name: "Projekt (Kanban)", url: "/app/project/view/kanban/Project", icon: "📊" },
             { name: "Projekt (List)", url: "/app/project", icon: "📋" },
             { name: "Artikel", url: "/app/item", icon: "📦" },
-            { name: "Artikelpreis", url: "/app/item-price", icon: "💲" },
+            { name: "Artikelpreis", url: "/app/item-price", icon: "€" },
             { name: "Brief", url: "/app/item/pdf%20brief", icon: "✉️" },
             { name: "Aufgabe", url: "/app/todo/view/calendar/default", icon: "✓" }
         ];
