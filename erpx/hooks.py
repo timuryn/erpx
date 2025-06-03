@@ -21,6 +21,19 @@ doctype_js = {
     "Project": "public/js/project_email_modal.js"
 }
 
+doc_events = {
+    "Sales Invoice": {
+        "before_validate": "erpx.custom_scripts.sales_invoice_customer.skip_customer_project_validation",
+    },
+    "Sales Order": {
+        "before_validate": "erpx.custom_scripts.sales_order_customer.skip_customer_project_validation",
+    },
+    "Delivery Note": {
+        "before_validate": "erpx.custom_scripts.delivery_note_customer.skip_customer_project_validation",
+    },
+    # ... your existing events
+}
+
 # Whitelisted Methods
 # whitelisted_methods = {
 #    "erpx.api.download_sales_invoice_pdfs.download_selected_sales_invoices": "erpx.api.download_sales_invoice_pdfs.download_selected_sales_invoices"
