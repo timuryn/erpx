@@ -3,9 +3,9 @@ from erpnext.stock.doctype.delivery_note.delivery_note import DeliveryNote
 
 def skip_customer_project_validation(doc, method):
     """Skip various customer validations"""
-    doc.flags.ignore_validate = True
-    doc.flags.ignore_mandatory = True
-    doc.flags.ignore_customer_validation = True
+#    doc.flags.ignore_validate = True
+#    doc.flags.ignore_mandatory = True
+#    doc.flags.ignore_customer_validation = True
 
 # Override the specific validation method
 def validate_proj_cust(self):

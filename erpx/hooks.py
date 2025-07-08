@@ -8,7 +8,8 @@ app_license = "mit"
 app_include_js = [
     "assets/erpx/js/customer_quick_entry.js",
     "assets/erpx/js/item_quick_entry.js",
-    "assets/erpx/js/sidebar_inject.js?v=1"
+    "assets/erpx/js/sidebar_inject.js",
+    "assets/erpx/js/supplier_quick_entry.js"
 ]
 
 doc_events = {
