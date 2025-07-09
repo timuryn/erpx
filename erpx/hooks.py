@@ -13,6 +13,10 @@ app_include_js = [
     "assets/erpx/js/project_heatmap_override.js"
 ]
 
+app_include_css = [
+    "/assets/erpx/css/notification_style.css"
+]
+
 doc_events = {
     "Email Queue": {
         "after_insert": "erpx.email.email_queue.check_and_send_email"
