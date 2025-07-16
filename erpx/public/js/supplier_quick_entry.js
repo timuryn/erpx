@@ -4,16 +4,14 @@ frappe.ui.form.SupplierQuickEntryForm = class SupplierQuickEntryForm extends fra
     constructor(doctype, after_insert) {
         super(doctype, after_insert);
         this.skip_redirect_on_error = true;
-        console.log("SupplierQuickEntryForm constructor called");
     }
     
     render_dialog() {
         this.mandatory = this.get_field();
         super.render_dialog();
-        console.log("SupplierQuickEntryForm dialog rendered");
     }
     
-    // Handle field mapping for supplier-specific fields
+    // Handle field mapping for supplier-specific fields and auto-refresh
     insert() {
         const map_field_names = {
             email_address: "email_id",
@@ -27,12 +25,29 @@ frappe.ui.form.SupplierQuickEntryForm = class SupplierQuickEntryForm extends fra
             }
         });
         
-        return super.insert();
+        // Call parent insert method and handle the response
+        return super.insert().then((response) => {
+            // Refresh the list view if we're on a list page
+            if (cur_list && cur_list.doctype === "Supplier") {
+                cur_list.refresh();
+            }
+            
+            // Also refresh any open forms that might have supplier links
+            if (cur_frm && cur_frm.fields_dict) {
+                Object.keys(cur_frm.fields_dict).forEach(fieldname => {
+                    const field = cur_frm.fields_dict[fieldname];
+                    if (field && field.df && field.df.options === "Supplier") {
+                        field.refresh();
+                    }
+                });
+            }
+            
+            return response;
+        });
     }
     
     // Define the fields in the quick entry form
     get_field() {
-        console.log("SupplierQuickEntryForm get_field called");
         return [
             {
                 fieldtype: "Section Break",
@@ -45,18 +60,30 @@ frappe.ui.form.SupplierQuickEntryForm = class SupplierQuickEntryForm extends fra
                 reqd: 1,
             },
             {
+                label: __("Lieferantengruppe"),
+                fieldname: "supplier_group",
+                fieldtype: "Link",
+                options: "Supplier Group",
+                reqd: 1,
+            },
+            {
                 label: __("Lieferantendetails"),
                 fieldname: "supplier_details",
                 fieldtype: "Text",
             },
             {
-                fieldtype: 'Column Break',
+                fieldtype: "Section Break",
+                label: __("Kontakt"),
             },
             {
-                label: __("E-Mail-Adresse"),
-                fieldname: "email_address",
+                label: __("Vorname"),
+                fieldname: "first_name",
                 fieldtype: "Data",
-                options: "Email",
+            },
+            {
+                label: __("Mobilfunknummer"),
+                fieldname: "mobile_number",
+                fieldtype: "Data",
             },
             {
                 label: __("Webseite"),
@@ -64,9 +91,18 @@ frappe.ui.form.SupplierQuickEntryForm = class SupplierQuickEntryForm extends fra
                 fieldtype: "Data",
             },
             {
-                label: __("Mobilfunknummer"),
-                fieldname: "mobile_number",
+                fieldtype: 'Column Break',
+            },
+            {
+                label: __("Nachname"),
+                fieldname: "last_name",
                 fieldtype: "Data",
+            },
+            {
+                label: __("E-Mail-Adresse"),
+                fieldname: "email_address",
+                fieldtype: "Data",
+                options: "Email",
             },
             {
                 fieldtype: "Section Break",
@@ -82,7 +118,7 @@ frappe.ui.form.SupplierQuickEntryForm = class SupplierQuickEntryForm extends fra
                 fieldname: "pincode",
                 fieldtype: "Data",
             },
-	    {
+            {
                 fieldtype: 'Column Break',
             },
             {
@@ -100,4 +136,3 @@ frappe.ui.form.SupplierQuickEntryForm = class SupplierQuickEntryForm extends fra
         ];
     }
 };
-

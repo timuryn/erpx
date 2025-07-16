@@ -9,8 +9,7 @@ app_include_js = [
     "assets/erpx/js/customer_quick_entry.js",
     "assets/erpx/js/item_quick_entry.js",
     "assets/erpx/js/sidebar_inject.js",
-    "assets/erpx/js/supplier_quick_entry.js",
-    "assets/erpx/js/project_heatmap_override.js"
+    "assets/erpx/js/supplier_quick_entry.js"
 ]
 
 app_include_css = [
@@ -24,7 +23,7 @@ doc_events = {
 }
 
 doctype_js = {
-    "Project": "public/js/project_email_modal.js"
+    "Project": "public/js/doctype/project/project.js"
 }
 
 doc_events = {
@@ -39,6 +38,19 @@ doc_events = {
     },
     # ... your existing events
 }
+
+override_doctype_dashboards = {
+    "Project": "erpx.overrides.project_dashboard.get_data"
+}
+
+doctype_dashboard_hooks = {
+    "Project": {
+        "custom_links": {
+            "Quotation": "custom_projektlink"
+        }
+    }
+}
+
 
 # Whitelisted Methods
 # whitelisted_methods = {
