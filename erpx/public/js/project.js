@@ -28,7 +28,7 @@ function override_project_heatmap(frm) {
             $heatmap.html('');
 
             frappe.call({
-                method: "erpx.overrides.activity.get_project_heatmap_data",
+                method: "erpx.custom_scripts.activity.get_project_heatmap_data",
                 args: {
                     project: frm.doc.name
                 },
@@ -421,7 +421,7 @@ frappe.ui.form.on('Project', {
         function addProjectLinkToContent(frm, modal) {
             if (frm && frm.doc && frm.doc.name) {
                 var projectName = frm.doc.name;
-                var projectLink = `<br><br>Den Link zum entsprechenden Projekt finden Sie unten:<br><a href="http://192.168.178.180:8080/app/project/${projectName}">Klicken Sie hier, um das Projekt anzuzeigen</a>`;
+                var projectLink = `<br><br>Den Link zum entsprechenden Projekt finden Sie unten:<br><a href="https://chow-ruling-closely.ngrok-free.app/app/project/${projectName}">Klicken Sie hier, um das Projekt anzuzeigen</a>`;
 
                 // Try to find the content editor
                 var contentEditor = modal.find('.frappe-control[data-fieldname="content"] .ql-editor');

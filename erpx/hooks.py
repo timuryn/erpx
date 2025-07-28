@@ -5,6 +5,7 @@ app_description = "mods for erpnext"
 app_email = "timur@dippelwerbung.de"
 app_license = "mit"
 
+# Quick entries override
 app_include_js = [
     "assets/erpx/js/customer_quick_entry.js",
     "assets/erpx/js/item_quick_entry.js",
@@ -12,36 +13,28 @@ app_include_js = [
     "assets/erpx/js/supplier_quick_entry.js"
 ]
 
+# Bigger notification bell
 app_include_css = [
     "/assets/erpx/css/notification_style.css"
 ]
 
+# Send email immediately
 doc_events = {
     "Email Queue": {
         "after_insert": "erpx.email.email_queue.check_and_send_email"
     }
 }
 
+# Project link button and heatmap
 doctype_js = {
-    "Project": "public/js/doctype/project/project.js"
-}
-
-doc_events = {
-    "Sales Invoice": {
-        "before_validate": "erpx.custom_scripts.sales_invoice_customer.skip_customer_project_validation",
-    },
-    "Sales Order": {
-        "before_validate": "erpx.custom_scripts.sales_order_customer.skip_customer_project_validation",
-    },
-    "Delivery Note": {
-        "before_validate": "erpx.custom_scripts.delivery_note_customer.skip_customer_project_validation",
-    },
-    # ... your existing events
+    "Project": "public/js/project.js"
 }
 
 override_doctype_dashboards = {
-    "Project": "erpx.overrides.project_dashboard.get_data"
+    "Project": "erpx.custom_scripts.project_dashboard.get_data"
 }
+
+# Project connections with Quotation
 
 doctype_dashboard_hooks = {
     "Project": {
@@ -51,6 +44,25 @@ doctype_dashboard_hooks = {
     }
 }
 
+# Disalbe customer validation for custom creating docs 
+
+doc_events = {
+    "Sales Order": {
+        "validate": "erpx.custom_scripts.project_validation.skip_customer_project_validation"
+    },
+    "Sales Invoice": {
+        "validate": "erpx.custom_scripts.project_validation.skip_customer_project_validation"
+    },
+    "Delivery Note": {
+        "validate": "erpx.custom_scripts.project_validation.skip_customer_project_validation"
+    }
+}
+
+# Override pdf print for public domain
+
+import frappe.utils.pdf
+from .pdf_override import get_pdf as custom_get_pdf
+frappe.utils.pdf.get_pdf = custom_get_pdf
 
 # Whitelisted Methods
 # whitelisted_methods = {

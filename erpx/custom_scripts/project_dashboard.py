@@ -1,4 +1,4 @@
-# erpx/erpx/overrides/project_dashboard.py
+# erpx/erpx/custom_scripts/project_dashboard.py
 from frappe import _
 
 def get_data(data=None):
