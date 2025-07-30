@@ -1,5 +1,5 @@
 import frappe
-from frappe.utils import add_days, today, get_datetime
+from frappe.utils import add_days, today, get_datetime, getdate, flt
 import datetime
 
 @frappe.whitelist()
@@ -32,14 +32,14 @@ def get_heatmap_data():
 
 @frappe.whitelist()
 def get_project_heatmap_data(project=None):
-    """Get heatmap data with detailed activity breakdown for specific project"""
+    """Get heatmap data with detailed activity breakdown for specific project (including Google Calendar events)"""
     
     if not project:
         return get_simple_heatmap_data()
     
     try:
-        # Get detailed breakdown by activity type for this specific project
-        detailed_data = frappe.db.sql(
+        # Get timesheet detailed breakdown by activity type for this specific project
+        timesheet_detailed_data = frappe.db.sql(
             """select 
                 date(tsd.from_time) as date,
                 tsd.activity_type,
@@ -55,7 +55,7 @@ def get_project_heatmap_data(project=None):
             as_dict=True
         )
         
-        # Get total hours per date for heatmap data
+        # Get total timesheet hours per date
         timesheet_data = frappe.db.sql(
             """select 
                 date(tsd.from_time) as date,
@@ -70,25 +70,44 @@ def get_project_heatmap_data(project=None):
             {"project": project},
             as_dict=True
         )
+
+        # Get Google Calendar events linked to this project
+        calendar_events = frappe.db.sql(
+            """select 
+                name,
+                subject,
+                date(starts_on) as event_date,
+                starts_on,
+                ends_on,
+                all_day
+            from `tabEvent`
+            where custom_projektlink = %(project)s
+            and date(starts_on) >= '2024-01-01'
+            and date(starts_on) <= '2026-12-31'
+            and sync_with_google_calendar = 1""",
+            {"project": project},
+            as_dict=True
+        )
             
-    except Exception:
+    except Exception as e:
+        frappe.log_error(f"Error in get_project_heatmap_data: {str(e)}")
         return get_simple_heatmap_data()
     
-    # If no timesheet data for this project, return empty heatmap
-    if not timesheet_data:
+    # If no data for this project, return empty heatmap
+    if not timesheet_data and not calendar_events:
         return get_empty_heatmap_data()
     
     # Convert to lookup dictionaries
     all_data = {}
     activity_details = {}
     
-    # Process total hours
+    # Process timesheet total hours
     for row in timesheet_data:
         timestamp = int(datetime.datetime.combine(row['date'], datetime.time()).timestamp())
-        all_data[timestamp] = row['total_hours']
+        all_data[timestamp] = all_data.get(timestamp, 0) + row['total_hours']
     
-    # Process detailed breakdown
-    for row in detailed_data:
+    # Process timesheet detailed breakdown
+    for row in timesheet_detailed_data:
         timestamp = int(datetime.datetime.combine(row['date'], datetime.time()).timestamp())
         
         if timestamp not in activity_details:
@@ -99,11 +118,67 @@ def get_project_heatmap_data(project=None):
         
         activity_details[timestamp]['activities'].append({
             'type': row['activity_type'] or 'Keine Aktivität',
-            'hours': row['hours']
+            'hours': row['hours'],
+            'source': 'timesheet'
         })
-        activity_details[timestamp]['total_hours'] += row['hours']
     
-    # Apply date shifting and generate final data
+    # Process Google Calendar events
+    for event in calendar_events:
+        timestamp = int(datetime.datetime.combine(event['event_date'], datetime.time()).timestamp())
+        
+        # Calculate event duration
+        if event['all_day']:
+            # For all-day events, assume 8 hours
+            event_hours = 8.0
+        else:
+            # Calculate duration for timed events
+            try:
+                start_time = get_datetime(event['starts_on'])
+                end_time = get_datetime(event['ends_on'])
+                duration = end_time - start_time
+                event_hours = duration.total_seconds() / 3600  # Convert to hours
+                # Minimum 0.5 hours for very short events
+                event_hours = max(event_hours, 0.5)
+            except:
+                event_hours = 1.0  # Default fallback
+        
+        # Add to total hours
+        all_data[timestamp] = all_data.get(timestamp, 0) + event_hours
+        
+        # Add to activity details
+        if timestamp not in activity_details:
+            activity_details[timestamp] = {
+                'activities': [],
+                'total_hours': 0
+            }
+        
+        # Truncate long event titles for display
+        event_title = event['subject'][:40] + "..." if len(event['subject']) > 40 else event['subject']
+        
+        activity_details[timestamp]['activities'].append({
+            'type': f"📅 {event_title}",
+            'hours': event_hours,
+            'source': 'calendar',
+            'event_name': event['name'],
+            'full_subject': event['subject']  # Store the full subject for tooltips
+        })
+        
+        # Debug logging for calendar events
+        frappe.log_error(f"Added calendar event '{event['subject']}' to timestamp {timestamp} ({event['event_date']})")
+
+    
+    # Update total hours in activity details
+    for timestamp in activity_details:
+        total = sum(activity['hours'] for activity in activity_details[timestamp]['activities'])
+        activity_details[timestamp]['total_hours'] = total
+    
+    # Debug: Show all activity timestamps before final mapping
+    for ts, details in activity_details.items():
+        if details['activities']:
+            date_from_ts = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
+            frappe.log_error(f"Activity data exists at timestamp {ts} (date: {date_from_ts}) with {len(details['activities'])} activities")
+    
+    # Apply date shifting and generate final data (same logic for both timesheets and calendar events)
     chart_start = datetime.date(2024, 7, 8)
     chart_end = datetime.date(2025, 7, 8)
     
@@ -117,11 +192,20 @@ def get_project_heatmap_data(project=None):
         
         if actual_date >= datetime.date(2024, 1, 1) and actual_date <= datetime.date(2026, 12, 31):
             actual_timestamp = int(datetime.datetime.combine(actual_date, datetime.time()).timestamp())
+            
+            # Use the same mapping for both timesheets and calendar events
             final_data[chart_timestamp] = all_data.get(actual_timestamp, 0)
             final_details[chart_timestamp] = activity_details.get(actual_timestamp, {
                 'activities': [],
                 'total_hours': 0
             })
+            
+            # Debug logging for days with activities
+            activities = final_details[chart_timestamp]['activities']
+            if activities:
+                actual_date_str = actual_date.strftime('%Y-%m-%d')
+                current_chart_date_str = current_chart_date.strftime('%Y-%m-%d')
+                frappe.log_error(f"Mapping: actual_date {actual_date_str} (timestamp {actual_timestamp}) -> chart_date {current_chart_date_str} (timestamp {chart_timestamp}): {len(activities)} activities")
         else:
             final_data[chart_timestamp] = 0
             final_details[chart_timestamp] = {'activities': [], 'total_hours': 0}

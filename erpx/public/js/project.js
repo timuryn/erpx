@@ -19,7 +19,7 @@ function override_project_heatmap(frm) {
                     <div class="heatmap-explanation" style="text-align: center; margin-bottom: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 6px; border-left: 4px solid #007bff;">
                         <h5 style="margin: 0 0 5px 0; color: #007bff;">📅 Erweiterte Aktivitäts-Heatmap</h5>
                         <p style="margin: 0; font-size: 13px; color: #666;">
-                            <strong>Zeitraum:</strong> September 2024 - September 2025 (inkl. nächste 60 Tage)
+                            <strong>Zeitraum:</strong> September 2024 - September 2025 (inkl. Timesheets & Google Calendar Events)
                         </p>
                     </div>
                 `);
@@ -34,12 +34,22 @@ function override_project_heatmap(frm) {
                 },
                 callback: function(r) {
                     try {
+                        console.log("📊 Heatmap data received:", r.message);
+                        
                         if (r.message && $heatmap.length > 0) {
                             var heatmapData, activityDetails;
 
                             if (r.message.heatmap_data) {
                                 heatmapData = r.message.heatmap_data;
                                 activityDetails = r.message.activity_details || {};
+                                
+                                // DEBUG: Show non-empty activities
+                                Object.keys(activityDetails).forEach(function(timestamp) {
+                                    if (activityDetails[timestamp].activities.length > 0) {
+                                        var date = new Date(parseInt(timestamp) * 1000);
+                                        console.log(`🎯 Found activity at timestamp ${timestamp} (${date.toISOString().split('T')[0]}):`, activityDetails[timestamp]);
+                                    }
+                                });
                             } else {
                                 heatmapData = r.message;
                                 activityDetails = {};
@@ -157,6 +167,8 @@ function fixTooltips($heatmap) {
 
 function setupEnhancedTooltips($heatmap, activityDetails) {
     try {
+        console.log("🔧 Setting up enhanced tooltips");
+        
         // Hide default tooltips
         if (!$('#heatmap-tooltip-override').length) {
             $('head').append(`
@@ -190,19 +202,69 @@ function setupEnhancedTooltips($heatmap, activityDetails) {
                 originalChartDate.setDate(chartStart.getDate() + index);
                 var chartTimestamp = Math.floor(originalChartDate.getTime() / 1000);
 
+                console.log(`🔍 Processing day ${date} (index ${index}), chart timestamp: ${chartTimestamp}, value: ${value}`);
+                
+                // DEBUG: Check if there's activity data at any nearby timestamps
+                var nearbyTimestamps = [];
+                for (var i = -21; i <= 21; i++) {
+                    var testTimestamp = chartTimestamp + (i * 86400); // Add/subtract days in seconds
+                    if (activityDetails[testTimestamp] && activityDetails[testTimestamp].activities.length > 0) {
+                        var testDate = new Date(testTimestamp * 1000);
+                        nearbyTimestamps.push({
+                            timestamp: testTimestamp,
+                            offset: i,
+                            date: testDate.toISOString().split('T')[0],
+                            activities: activityDetails[testTimestamp].activities.length
+                        });
+                    }
+                }
+                if (nearbyTimestamps.length > 0) {
+                    console.log(`🔍 Found nearby activities for ${date}:`, nearbyTimestamps);
+                }
+                
                 var details = activityDetails[chartTimestamp];
+                
+                // TEMPORARY FIX: If no details found, try looking 20 days later (the exact offset we found)
+                if (!details || details.activities.length === 0) {
+                    var alternateTimestamp = chartTimestamp + (20 * 86400); // Add 20 days in seconds
+                    if (activityDetails[alternateTimestamp] && activityDetails[alternateTimestamp].activities.length > 0) {
+                        console.log(`🔧 Using alternate timestamp ${alternateTimestamp} instead of ${chartTimestamp}`);
+                        details = activityDetails[alternateTimestamp];
+                    }
+                }
+                
+                console.log(`📋 Details for timestamp ${chartTimestamp}:`, details);
+                
                 var tooltipContent;
 
                 if (details && details.activities && details.activities.length > 0) {
                     var niceDate = formatDateNice(date);
+                    console.log(`✅ Found ${details.activities.length} activities for ${date}`);
+                    
                     var activityLines = details.activities.map(function(activity) {
-                        return `${activity.type} - ${activity.hours} Stunden`;
+                        console.log("🔍 Processing activity:", activity);
+                        
+                        // Enhanced display for calendar events with full subject
+                        if (activity.source === 'calendar') {
+                            var fullSubject = activity.full_subject || activity.type;
+                            // Remove emoji and clean up if needed
+                            if (fullSubject.startsWith('📅 ')) {
+                                fullSubject = fullSubject.substring(2);
+                            }
+                            console.log("📋 Calendar event full subject:", fullSubject);
+                            return `📅 <strong>Event:</strong> ${fullSubject} - ${activity.hours} Stunden`;
+                        } else {
+                            return `${activity.type} - ${activity.hours} Stunden`;
+                        }
                     });
-                    tooltipContent = activityLines.join('<br>') + `<br><small>am ${niceDate}</small>`;
+                    tooltipContent = activityLines.join('<br>') + `<br><small><strong>Datum:</strong> ${niceDate}</small>`;
                 } else {
+                    console.log(`❌ No activities found for ${date}, using fallback`);
                     var niceDate = formatDateNice(date);
                     tooltipContent = `${value} Stunden am ${niceDate}`;
                 }
+
+                console.log("💬 Final tooltip content:", tooltipContent);
 
                 $rect.on('mouseenter.custom', function(e) {
                     showCustomTooltip(e, tooltipContent);
@@ -237,22 +299,37 @@ function showCustomTooltip(event, content) {
     var tooltip = $(`
         <div class="custom-heatmap-tooltip" style="
             position: absolute;
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(0, 0, 0, 0.9);
             color: white;
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            line-height: 1.4;
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            line-height: 1.5;
             z-index: 1000;
             pointer-events: none;
-            max-width: 250px;
+            max-width: 350px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.1);
         ">${content}</div>
     `);
 
     $('body').append(tooltip);
 
-    var x = event.pageX + 10;
+    var x = event.pageX + 15;
     var y = event.pageY - 10;
+
+    // Prevent tooltip from going off screen
+    var tooltipWidth = tooltip.outerWidth();
+    var tooltipHeight = tooltip.outerHeight();
+    var windowWidth = $(window).width();
+    var windowHeight = $(window).height();
+
+    if (x + tooltipWidth > windowWidth) {
+        x = event.pageX - tooltipWidth - 15;
+    }
+    if (y + tooltipHeight > windowHeight) {
+        y = event.pageY - tooltipHeight - 10;
+    }
 
     tooltip.css({
         left: x + 'px',
@@ -264,9 +341,7 @@ function hideCustomTooltip() {
     $('.custom-heatmap-tooltip').remove();
 }
 
-
-
-
+// Email functionality (unchanged)
 frappe.ui.form.on('Project', {
     refresh: function(frm) {
         // Variable to track if new email button was clicked
