@@ -27,7 +27,8 @@ doc_events = {
 
 # Project link button and heatmap
 doctype_js = {
-    "Project": "public/js/project.js"
+    "Project": "public/js/project.js",
+    "Supplier": "public/js/supplier_quick_entry.js"
 }
 
 override_doctype_dashboards = {
@@ -63,6 +64,7 @@ doc_events = {
 import frappe.utils.pdf
 from .pdf_override import get_pdf as custom_get_pdf
 frappe.utils.pdf.get_pdf = custom_get_pdf
+
 
 # Whitelisted Methods
 # whitelisted_methods = {
