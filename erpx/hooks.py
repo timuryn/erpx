@@ -27,7 +27,6 @@ doc_events = {
 
 # Project link button and heatmap
 doctype_js = {
-    "Project": "public/js/project.js",
     "Supplier": "public/js/supplier_quick_entry.js"
 }
 
@@ -65,11 +64,19 @@ import frappe.utils.pdf
 from .pdf_override import get_pdf as custom_get_pdf
 frappe.utils.pdf.get_pdf = custom_get_pdf
 
-
 # Whitelisted Methods
 # whitelisted_methods = {
 #    "erpx.api.download_sales_invoice_pdfs.download_selected_sales_invoices": "erpx.api.download_sales_invoice_pdfs.download_selected_sales_invoices"
 # }
+
+# Override custom status Aufwarten for project
+doc_events = {
+    "Project": {
+        "before_save": "erpx.custom_scripts.project_status_aufwarten.before_save_project",
+        "validate": "erpx.custom_scripts.project_status_aufwarten.validate_project_status",
+        "after_save": "erpx.custom_scripts.project_status_aufwarten.after_save_project"
+    }
+}
 
 # Apps
 # ------------------
