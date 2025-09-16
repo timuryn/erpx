@@ -29,15 +29,15 @@ def cancel_session(session_id):
                 "canceled_at": time.time(),
                 "start_time": existing_progress.get("start_time", time.time())
             }, expires_in_sec=60)  # Keep for 1 minute to show cancel status
-            
+
             # Remove from active sessions
             with _processing_lock:
                 _active_sessions.discard(session_id)
-            
+
             return {"status": "success", "message": "Sitzung wurde zum Abbruch markiert"}
         else:
             return {"status": "not_found", "message": "Sitzung nicht gefunden"}
-            
+
     except Exception as e:
         frappe.log_error(f"Error canceling session {session_id}: {str(e)}")
         return {"status": "error", "message": "Fehler beim Abbrechen der Sitzung"}
@@ -113,7 +113,7 @@ def download_selected_sales_invoices_with_progress(selected_invoices=None, from_
                 current_progress = frappe.cache().get_value(f"progress_{session_id}")
                 if current_progress and current_progress.get("status") == "canceled":
                     frappe.throw("Download wurde abgebrochen")
-                
+
                 try:
                     # Update progress before processing
                     frappe.cache().set_value(f"progress_{session_id}", {
@@ -206,7 +206,7 @@ def download_invoices_with_excel_progress(from_date=None, to_date=None, session_
     Download both Sales Invoice PDFs and an Excel file with progress tracking
     """
     start_time = time.time()
-    
+
     if not from_date or not to_date:
         frappe.throw("Bitte geben Sie sowohl ein Anfangs- als auch ein Enddatum an")
 
@@ -229,18 +229,35 @@ def download_invoices_with_excel_progress(from_date=None, to_date=None, session_
         _active_sessions.add(session_id)
 
     try:
-        # Get invoices by date range
-        invoices = frappe.get_all(
-            "Sales Invoice",
-            filters={
-                "docstatus": 1,
-                "posting_date": ["between", [from_date, to_date]]
-            },
-            fields=[
-                "name", "customer", "taxes_and_charges", "status",
-                "posting_date", "due_date", "base_grand_total", "customer_name"
-            ]
-        )
+        # Get invoices by date range with deductions calculation
+        invoices_query = """
+            SELECT 
+                si.name, 
+                si.customer,
+                si.taxes_and_charges,
+                si.status,
+                si.posting_date, 
+                si.due_date, 
+                si.base_grand_total,
+                IFNULL(SUM(d.amount), 0) AS deductions,
+                si.customer_name
+            FROM `tabSales Invoice` si
+            LEFT JOIN `tabPayment Entry Reference` per 
+                ON per.reference_name = si.name AND per.reference_doctype = 'Sales Invoice'
+            LEFT JOIN `tabPayment Entry` pe 
+                ON pe.name = per.parent AND pe.docstatus = 1
+            LEFT JOIN `tabPayment Entry Deduction` d 
+                ON d.parent = pe.name
+            WHERE si.docstatus = 1 
+              AND si.posting_date BETWEEN %(from_date)s AND %(to_date)s
+            GROUP BY si.name
+            ORDER BY si.name ASC
+        """
+
+        invoices = frappe.db.sql(invoices_query, {
+            'from_date': from_date,
+            'to_date': to_date
+        }, as_dict=True)
 
         if not invoices:
             frappe.throw("Keine Rechnungen im angegebenen Zeitraum gefunden")
@@ -272,15 +289,15 @@ def download_invoices_with_excel_progress(from_date=None, to_date=None, session_
                 "start_time": start_time
             }, expires_in_sec=600)
 
-            # Prepare data for Excel
+            # Prepare data for Excel with Abzüge column
             xlsx_data = []
             headers = [
                 "Rechnung", "Konto", "Gegenkonto", "Soll/Haben",
-                "Datum", "Fälligkeit", "Umsatz", "Debitorennummer", "Debitor"
+                "Datum", "Fälligkeit", "Umsatz", "Abzüge", "Debitorennummer", "Debitor"
             ]
             xlsx_data.append(headers)
 
-            # Add invoice data with transformations
+            # Add invoice data with transformations and deductions
             for invoice in invoices:
                 # Transform customer to "Konto"
                 try:
@@ -313,17 +330,28 @@ def download_invoices_with_excel_progress(from_date=None, to_date=None, session_
                 except (TypeError, AttributeError):
                     debitorennummer = str(invoice.customer) + '0'
 
-                # Add row
+                # Calculate Umsatz (base_grand_total - deductions)
+                deductions = float(invoice.deductions or 0)
+                umsatz = float(invoice.base_grand_total) - deductions
+
+                # Add row with Abzüge column
                 xlsx_data.append([
-                    invoice.name, konto, tax_code, transformed_status,
-                    invoice.posting_date, invoice.due_date, invoice.base_grand_total,
-                    debitorennummer, invoice.customer_name
+                    invoice.name, 
+                    konto, 
+                    tax_code, 
+                    transformed_status,
+                    invoice.posting_date, 
+                    invoice.due_date, 
+                    umsatz,
+                    deductions,  # This is the new Abzüge column
+                    debitorennummer, 
+                    invoice.customer_name
                 ])
 
             # Create Excel file
             xlsx_file = make_xlsx(xlsx_data, "Invoices")
             zipf.writestr(f"Rechnungen_{from_date}_bis_{to_date}.xlsx", xlsx_file.getvalue())
-            
+
             completed_steps += 1
 
             # PHASE 2: Download PDFs
@@ -346,42 +374,42 @@ def download_invoices_with_excel_progress(from_date=None, to_date=None, session_
             if not ERP_URL or not API_KEY or not API_SECRET:
                 # If no external API config, use internal PDF generation
                 pdf_completed = 0
-                for invoice_name in [inv.name for inv in invoices]:
+                for invoice in invoices:
                     # Check for cancellation
                     current_progress = frappe.cache().get_value(f"progress_{session_id}")
                     if current_progress and current_progress.get("status") == "canceled":
                         frappe.throw("Download wurde abgebrochen")
-                        
+
                     try:
                         pdf_content = frappe.get_print(
                             "Sales Invoice",
-                            invoice_name,
+                            invoice.name,
                             "Rechnung",
                             as_pdf=True,
                             no_letterhead=False
                         )
-                        
+
                         if pdf_content:
-                            zipf.writestr(f"PDFs/{invoice_name}.pdf", pdf_content)
-                        
+                            zipf.writestr(f"PDFs/{invoice.name}.pdf", pdf_content)
+
                         pdf_completed += 1
-                        
+
                         # Update progress for PDF downloads
                         frappe.cache().set_value(f"progress_{session_id}", {
                             "status": "pdf_download",
                             "completed": completed_steps,
                             "total": total_steps,
-                            "current_step": f"PDF {pdf_completed}/{len(invoices)}: {invoice_name}",
+                            "current_step": f"PDF {pdf_completed}/{len(invoices)}: {invoice.name}",
                             "phase": "PDF-Download",
                             "pdfs_completed": pdf_completed,
                             "pdfs_total": len(invoices),
                             "start_time": start_time
                         }, expires_in_sec=600)
-                        
+
                     except Exception as e:
-                        frappe.log_error(f"Error generating PDF for {invoice_name}: {str(e)}")
+                        frappe.log_error(f"Error generating PDF for {invoice.name}: {str(e)}")
                         continue
-                        
+
             else:
                 # Use external API for PDF downloads
                 headers = {"Authorization": f"token {API_KEY}:{API_SECRET}"}

@@ -44,20 +44,6 @@ doctype_dashboard_hooks = {
     }
 }
 
-# Disalbe customer validation for custom creating docs 
-
-doc_events = {
-    "Sales Order": {
-        "validate": "erpx.custom_scripts.project_validation.skip_customer_project_validation"
-    },
-    "Sales Invoice": {
-        "validate": "erpx.custom_scripts.project_validation.skip_customer_project_validation"
-    },
-    "Delivery Note": {
-        "validate": "erpx.custom_scripts.project_validation.skip_customer_project_validation"
-    }
-}
-
 # Override pdf print for public domain
 
 import frappe.utils.pdf
