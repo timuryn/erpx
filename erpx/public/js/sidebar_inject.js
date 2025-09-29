@@ -5,35 +5,35 @@ function injectSidebarMenu() {
         // Remove existing custom menu if it exists
         sidebar.find('div.navigation-header[data-custom="true"]').remove();
         sidebar.find('a[data-custom="true"]').remove();
-        
+
         // Add a custom navigation header
         const navigationHeader = $('<div class="navigation-header" data-custom="true">Navigation</div>');
         sidebar.append(navigationHeader);
-        
+
         // Multi-method dark mode detection for custom ERPNext apps
         function isDarkMode() {
             // Method 1: Check HTML data attributes (most reliable for newer ERPNext)
             const html = document.documentElement;
             const themeMode = html.getAttribute('data-theme-mode');
             const theme = html.getAttribute('data-theme');
-            
+
             if (themeMode === 'dark' || theme === 'dark') {
                 return true;
             }
             if (themeMode === 'light' || theme === 'light') {
                 return false;
             }
-            
+
         }
-        
+
         // Update styles based on current mode
         function updateStyles() {
             const darkMode = isDarkMode();
             const styleId = 'erpx-sidebar-styles';
-            
+
             // Remove existing styles
             $(`#${styleId}`).remove();
-            
+
             // Define styles for both modes
             const lightModeStyles = `
                 .erpx-nav-item {
@@ -58,7 +58,7 @@ function injectSidebarMenu() {
                     border-color: #009D4A;
                 }
             `;
-            
+
             const darkModeStyles = `
                 .erpx-nav-item {
                     display: flex;
@@ -82,7 +82,7 @@ function injectSidebarMenu() {
                     border-color: #00ff5f;
                 }
             `;
-            
+
             const commonStyles = `
                 .erpx-nav-icon {
                     display: inline-flex;
@@ -93,7 +93,7 @@ function injectSidebarMenu() {
                     width: 24px;
                     height: 24px;
                 }
-                
+
                 .navigation-header[data-custom="true"] {
                     color: ${darkMode ? '#e0e0e0' : '#333333'};
                     font-weight: bold;
@@ -101,31 +101,30 @@ function injectSidebarMenu() {
                     padding: 5px 15px;
                 }
             `;
-            
+
             // Apply the appropriate styles
             const finalStyles = darkMode ? darkModeStyles + commonStyles : lightModeStyles + commonStyles;
-            
+
             $('head').append(`<style id="${styleId}">${finalStyles}</style>`);
         }
-        
+
         // Initial style application
         updateStyles();
-        
+
         // Navigation items with icons
         const navItems = [
+            { name: "Projekt", url: "/app/project", icon: "📋" },
             { name: "Angebot", url: "/app/quotation", icon: "📄" },
             { name: "Auftrag", url: "/app/sales-order", icon: "📝" },
+            { name: "Lieferschein", url: "/app/delivery-note", icon: "🚚" },
             { name: "Rechnung", url: "/app/sales-invoice", icon: "🧾" },
             { name: "Kunde", url: "/app/customer", icon: "👤" },
-            { name: "Lieferschein", url: "/app/delivery-note", icon: "🚚" },
-            { name: "Projekt (Kanban)", url: "/app/project/view/kanban/Project", icon: "📊" },
-            { name: "Projekt (List)", url: "/app/project", icon: "📋" },
             { name: "Artikel", url: "/app/item", icon: "📦" },
             { name: "Artikelpreis", url: "/app/item-price", icon: "€" },
             { name: "Brief", url: "/app/item/pdf%20brief", icon: "✉️" },
             { name: "Aufgabe", url: "/app/todo/view/calendar/default", icon: "✓" }
         ];
-        
+
         // Add each navigation item
         navItems.forEach(item => {
             const navItem = $(`
@@ -136,7 +135,7 @@ function injectSidebarMenu() {
             `);
             sidebar.append(navItem);
         });
-        
+
         // Enhanced event handling for custom ERPNext apps
         // Monitor HTML attribute changes (primary method)
         const observer = new MutationObserver(function(mutations) {
@@ -149,29 +148,29 @@ function injectSidebarMenu() {
                 }
             });
         });
-        
-        observer.observe(document.documentElement, { 
-            attributes: true, 
-            attributeFilter: ['data-theme-mode', 'data-theme', 'class'] 
+
+        observer.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ['data-theme-mode', 'data-theme', 'class']
         });
-        
+
         // Also monitor body for theme classes
-        observer.observe(document.body, { 
-            attributes: true, 
-            attributeFilter: ['class'] 
+        observer.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['class']
         });
-        
+
         // Listen for frappe events (if available)
         if (frappe) {
             // General theme change events
             $(document).on('theme-change theme-updated user-settings-updated', updateStyles);
-            
+
             // Listen for frappe ready event and user session updates
             $(document).on('app_ready', function() {
                 setTimeout(updateStyles, 100); // Small delay to ensure theme is applied
             });
         }
-        
+
         // System theme change detection (for Automatic mode)
         if (window.matchMedia) {
             window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
@@ -179,13 +178,13 @@ function injectSidebarMenu() {
                 const html = document.documentElement;
                 const themeMode = html.getAttribute('data-theme-mode');
                 const theme = html.getAttribute('data-theme');
-                
+
                 if (!themeMode && !theme) {
                     updateStyles();
                 }
             });
         }
-        
+
         // Periodic check as a backup (for custom apps that might not fire all events)
         let lastThemeCheck = null;
         setInterval(function() {
@@ -195,7 +194,7 @@ function injectSidebarMenu() {
                 updateStyles();
             }
         }, 5000); // Check every 5 seconds
-        
+
     } else {
         setTimeout(injectSidebarMenu, 500);
     }
