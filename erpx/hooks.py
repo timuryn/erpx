@@ -11,7 +11,7 @@ app_include_js = [
     "assets/erpx/js/item_quick_entry.js",
     "assets/erpx/js/sidebar_inject.js",
     "assets/erpx/js/supplier_quick_entry.js",
-    "/assets/erpx/js/renew_filter.js"
+    "assets/erpx/js/renew_filter.js"
 ]
 
 # Bigger notification bell
