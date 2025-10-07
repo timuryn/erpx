@@ -105,7 +105,7 @@ frappe.ui.form.CustomerQuickEntryForm = class CustomerQuickEntryForm extends fra
                 label: __('Steuerdetails'),
             },
             {
-                label: __('Steuernummer'),
+                label: __('UmSt.-ID'),
                 fieldname: 'tax_id',
                 fieldtype: 'Data',
             },
@@ -113,8 +113,8 @@ frappe.ui.form.CustomerQuickEntryForm = class CustomerQuickEntryForm extends fra
                 fieldtype: 'Column Break',
             },
             {
-                label: __('UmSt.-ID'),
-                fieldname: 'custom_umstid',
+                label: __('Steuernummer'),
+                fieldname: 'custom_steuernummer',
                 fieldtype: 'Data',
             },
             {

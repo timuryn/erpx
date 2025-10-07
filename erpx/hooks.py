@@ -65,6 +65,12 @@ doc_events = {
     }
 }
 
+# Set default einvoice profile to EN 16931
+# Run after installation
+after_install = "erpx.custom_scripts.custom_fields_einvoice.execute"
+# Run after every migration/update
+after_migrate = "erpx.custom_scripts.custom_fields_einvoice.execute"
+
 # Apps
 # ------------------
 
