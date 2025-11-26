@@ -37,7 +37,7 @@ def check_project_timeline_activity(project):
 
         # Get the most recent follow-up notification date
         last_followup_date = None
-        
+
         if existing_communications_old:
             last_followup_date = getdate(existing_communications_old[0].creation)
         if existing_communications_new:
@@ -54,7 +54,7 @@ def check_project_timeline_activity(project):
         # Check for timeline activities since the reference date
         # Look for Communications, Comments, Tasks, etc. that are not follow-up emails
         timeline_activities = []
-        
+
         # Check for Communications (excluding our follow-up emails)
         communications = frappe.get_all(
             'Communication',
@@ -68,7 +68,7 @@ def check_project_timeline_activity(project):
             fields=['creation']
         )
         timeline_activities.extend(communications)
-        
+
         # Check for Comments
         comments = frappe.get_all(
             'Comment',
@@ -81,7 +81,7 @@ def check_project_timeline_activity(project):
             fields=['creation']
         )
         timeline_activities.extend(comments)
-        
+
         # Check for Tasks related to the project
         tasks = frappe.get_all(
             'Task',
@@ -92,7 +92,7 @@ def check_project_timeline_activity(project):
             fields=['creation']
         )
         timeline_activities.extend(tasks)
-        
+
         # Check if project itself was modified (excluding our follow-up modifications)
         project_modified_date = getdate(project.modified)
         if project_modified_date > reference_date:
@@ -139,15 +139,15 @@ def send_first_followup_notifications():
     ten_days_ago = add_days(today, -10)
 
     # Get all projects created exactly 10 days ago
+    # FIX: Use list-based filters with 'not in' operator for proper multiple status exclusion
     projects = frappe.get_all(
         'Project',
-        filters={
-            'creation': ['>=', ten_days_ago + ' 00:00:00'],
-            'creation': ['<=', ten_days_ago + ' 23:59:59'],
-            'status': ['!=', 'Completed'],
-            'status': ['!=', 'Cancelled'],
-            'owner': ['!=', '']
-        },
+        filters=[
+            ['creation', '>=', ten_days_ago + ' 00:00:00'],
+            ['creation', '<=', ten_days_ago + ' 23:59:59'],
+            ['status', 'not in', ['Completed', 'Cancelled']],
+            ['owner', '!=', '']
+        ],
         fields=['name', 'project_name', 'owner', 'status', 'creation', 'modified']
     )
 
@@ -161,19 +161,24 @@ def send_first_followup_notifications():
             filtered_projects.append(project)
 
     for project in filtered_projects:
+        # CRITICAL: Re-check project status from database to handle status changes after initial query
+        current_project = frappe.get_doc('Project', project.name)
+        if current_project.status in ['Completed', 'Cancelled']:
+            continue
+            
         # Check for recent activity in project timeline to reset countdown
-        has_recent_activity = check_project_timeline_activity(project)
-        
+        has_recent_activity = check_project_timeline_activity(current_project)
+
         if has_recent_activity:
             # Skip this project if there was recent activity that should reset the countdown
             continue
-            
+
         # Check if any follow-up email was already sent (check both old and new format)
         existing_communication_old = frappe.get_all(
             'Communication',
             filters={
                 'reference_doctype': 'Project',
-                'reference_name': project.name,
+                'reference_name': current_project.name,
                 'subject': ['like', '%Nachakquise%'],
                 'communication_type': 'Communication'
             }
@@ -182,14 +187,14 @@ def send_first_followup_notifications():
         existing_communication_new = frappe.get_all(
             'Communication',
             filters={
-                'subject': ['like', f'%Nachakquise%{project.name}%'],
+                'subject': ['like', f'%Nachakquise%{current_project.name}%'],
                 'communication_type': 'Communication'
             }
         )
 
         # If no follow-up email exists in either format, send first one
         if not existing_communication_old and not existing_communication_new:
-            send_followup_email(project, notification_type="first", notification_number=1)
+            send_followup_email(current_project, notification_type="first", notification_number=1)
 
 def send_recurring_followup_notifications():
     """
@@ -199,31 +204,36 @@ def send_recurring_followup_notifications():
     """
     cutoff_date = "2025-07-01"
 
+    # FIX: Use list-based filters with 'not in' operator
     projects = frappe.get_all(
         'Project',
-        filters={
-            'creation': ['>=', cutoff_date + ' 00:00:00'],
-            'status': ['!=', 'Completed'],
-            'status': ['!=', 'Cancelled'],
-            'owner': ['!=', '']
-        },
+        filters=[
+            ['creation', '>=', cutoff_date + ' 00:00:00'],
+            ['status', 'not in', ['Completed', 'Cancelled']],
+            ['owner', '!=', '']
+        ],
         fields=['name', 'project_name', 'owner', 'status', 'creation', 'modified']
     )
 
     for project in projects:
+        # CRITICAL: Re-check project status from database to handle status changes after initial query
+        current_project = frappe.get_doc('Project', project.name)
+        if current_project.status in ['Completed', 'Cancelled']:
+            continue
+            
         # Check for recent activity in project timeline to reset countdown
-        has_recent_activity = check_project_timeline_activity(project)
-        
+        has_recent_activity = check_project_timeline_activity(current_project)
+
         if has_recent_activity:
             # Skip this project if there was recent activity that should reset the countdown
             continue
-            
+
         # Get existing follow-up communications for this project (check both old and new format)
         existing_communications_old = frappe.get_all(
             'Communication',
             filters={
                 'reference_doctype': 'Project',
-                'reference_name': project.name,
+                'reference_name': current_project.name,
                 'subject': ['like', '%Nachakquise%'],
                 'communication_type': 'Communication'
             },
@@ -234,7 +244,7 @@ def send_recurring_followup_notifications():
         existing_communications_new = frappe.get_all(
             'Communication',
             filters={
-                'subject': ['like', f'%Nachakquise%{project.name}%'],
+                'subject': ['like', f'%Nachakquise%{current_project.name}%'],
                 'communication_type': 'Communication'
             },
             fields=['creation', 'subject'],
@@ -251,7 +261,7 @@ def send_recurring_followup_notifications():
             last_notification_date = getdate(last_notification.creation)
 
             # Determine the interval based on project status
-            if project.status == "Aufwarten":
+            if current_project.status == "Aufwarten":
                 # For "Aufwarten" status, wait 15 days before next notification
                 interval_days = 15
                 interval_days_ago = getdate(add_days(nowdate(), -15))
@@ -264,13 +274,19 @@ def send_recurring_followup_notifications():
             if last_notification_date == interval_days_ago:
                 # Calculate which notification number this will be
                 notification_count = len(all_communications) + 1
-                send_followup_email(project, notification_type="recurring", notification_number=notification_count)
+                send_followup_email(current_project, notification_type="recurring", notification_number=notification_count)
 
 def send_followup_email(project, notification_type="first", notification_number=1):
     """
     Send follow-up email to project owner
     """
     try:
+        # CRITICAL: Final status check before sending email
+        # Reload project from database to ensure we have the latest status
+        project = frappe.get_doc('Project', project.name)
+        if project.status in ['Completed', 'Cancelled']:
+            return False
+            
         # Get project owner details
         owner = frappe.get_doc('User', project.owner)
 
@@ -352,9 +368,12 @@ def send_followup_email(project, notification_type="first", notification_number=
             frappe.enqueue("frappe.email.queue.flush", queue="short")
         except Exception as e:
             pass
+        
+        return True
 
     except Exception as e:
-        pass
+        frappe.log_error(frappe.get_traceback(), "Project Followup Email Error")
+        return False
 
 # Usage:
-# bench execute erpx.erpx.project_followup.send_project_followup_notification
+# bench execute erpx.erpx.project_followup.send_project_followup_notifications

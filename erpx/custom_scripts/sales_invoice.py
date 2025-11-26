@@ -82,6 +82,28 @@ def finalize_invoice(invoice_id):
     except Exception as e:
         frappe.throw(f"Failed to submit invoice: {str(e)}")
 
+@frappe.whitelist()
+def update_invoice_status_to_credit_note_issued(invoice_name):
+    """
+    Update the status of a Sales Invoice to 'Credit Note Issued'
+    This bypasses the validation by using db_set which doesn't trigger validations
+    """
+    try:
+        # Use db_set to bypass validation
+        frappe.db.set_value('Sales Invoice', invoice_name, 'status', 'Credit Note Issued', update_modified=False)
+        frappe.db.commit()
+        
+        return {
+            'status': 'success',
+            'message': f'Status updated to Credit Note Issued for {invoice_name}'
+        }
+    except Exception as e:
+        frappe.log_error(f"Error updating status for {invoice_name}: {str(e)}")
+        return {
+            'status': 'error',
+            'message': str(e)
+        }
+
 def _recalculate_outstanding_amount(invoice):
     """Recalculate outstanding amount using GL entries"""
     try:

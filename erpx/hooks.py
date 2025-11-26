@@ -71,6 +71,13 @@ after_install = "erpx.custom_scripts.custom_fields_einvoice.execute"
 # Run after every migration/update
 after_migrate = "erpx.custom_scripts.custom_fields_einvoice.execute"
 
+# Payment hook
+# doc_events = {
+#   "Payment Entry": {
+#        "on_submit": "erpx.custom_scripts.sales_invoice.on_payment_entry_submit"
+#    }
+# }
+
 # Apps
 # ------------------
 
