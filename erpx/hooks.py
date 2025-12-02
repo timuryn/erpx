@@ -51,11 +51,6 @@ import frappe.utils.pdf
 from .pdf_override import get_pdf as custom_get_pdf
 frappe.utils.pdf.get_pdf = custom_get_pdf
 
-# Whitelisted Methods
-# whitelisted_methods = {
-#    "erpx.api.download_sales_invoice_pdfs.download_selected_sales_invoices": "erpx.api.download_sales_invoice_pdfs.download_selected_sales_invoices"
-# }
-
 # Override custom status Aufwarten for project
 doc_events = {
     "Project": {
@@ -71,12 +66,6 @@ after_install = "erpx.custom_scripts.custom_fields_einvoice.execute"
 # Run after every migration/update
 after_migrate = "erpx.custom_scripts.custom_fields_einvoice.execute"
 
-# Payment hook
-# doc_events = {
-#   "Payment Entry": {
-#        "on_submit": "erpx.custom_scripts.sales_invoice.on_payment_entry_submit"
-#    }
-# }
 
 # Apps
 # ------------------
