@@ -16,6 +16,7 @@ def make_urls_absolute(html):
         attr = "href" if tag.name == "link" else "src"
         if tag.has_attr(attr):
             if tag[attr].startswith("/") and not tag[attr].startswith("//"):
+                # Keep API endpoints as absolute internal URLs for wkhtmltopdf
                 tag[attr] = urljoin(BASE_URL, tag[attr])
     return str(soup)
 
@@ -25,16 +26,16 @@ def get_pdf(html, options=None, output=None):
     """
     # Fix URLs for Docker environment
     html = make_urls_absolute(html)
-    
+
     # Clean problematic CSS variables that cause rendering issues
     html = re.sub(r'var\(--bs-[^)]+\)', '#333333', html)  # Bootstrap variables
     html = re.sub(r'var\(--primary[^)]*\)', '#0d6efd', html)  # Primary color variables
-    
+
     # Use Frappe's built-in option preparation for proper header/footer handling
     from frappe.utils.pdf import prepare_options
     html, processed_options = prepare_options(html, options)
-    
-    # Set up safe PDF generation options
+
+    # Set up safe PDF generation options with network access for internal Docker URLs
     safe_options = {
         'page-size': 'A4',
         'encoding': "UTF-8",
@@ -44,10 +45,10 @@ def get_pdf(html, options=None, output=None):
         'enable-local-file-access': '',
         'disable-smart-shrinking': '',
     }
-    
+
     # Merge options with Frappe's processed options taking precedence
     final_options = {**safe_options, **processed_options}
-    
+
     # Set consistent margins (matching Frappe's default behavior)
     if not final_options.get("margin-right"):
         final_options["margin-right"] = "0mm"
@@ -63,13 +64,12 @@ def get_pdf(html, options=None, output=None):
 
         # Verify PDF was created successfully
         reader = PdfReader(io.BytesIO(filedata))
-        
+
         # Clean up temporary header/footer files
         from frappe.utils.pdf import cleanup
         cleanup(final_options)
 
         return filedata
-
     except Exception as e:
         # Clean up on error
         try:
