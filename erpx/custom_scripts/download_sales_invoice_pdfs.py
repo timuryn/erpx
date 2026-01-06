@@ -602,3 +602,150 @@ def download_selected_sales_invoices(selected_invoices=None, from_date=None, to_
     Legacy function for backward compatibility
     """
     return download_selected_sales_invoices_with_progress(selected_invoices, from_date, to_date)
+
+
+
+@frappe.whitelist()
+def generate_sales_invoice_list_pdf(selected_invoices=None):
+    """
+    Generate single PDF report of selected sales invoices
+    """
+    if isinstance(selected_invoices, str):
+        invoice_list = [x.strip() for x in selected_invoices.split(',')]
+    else:
+        frappe.throw("No invoices selected")
+    
+    # Fetch invoice data
+    invoices = frappe.get_all(
+        "Sales Invoice",
+        filters={"name": ["in", invoice_list]},
+        fields=[
+            "name", 
+            "title", 
+            "customer", 
+            "due_date", 
+            "posting_date", 
+            "status", 
+            "grand_total",
+            "custom_referenz",
+            "custom_lieferdatum",
+            "custom_kommission"
+        ]
+    )
+    
+    if not invoices:
+        frappe.throw("No invoices found")
+    
+    # Create HTML
+    html = """<!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: Arial; margin: 20px; padding: 0; }
+            .header { font-size: 7px; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #333; }
+            h1 { text-align: center; font-size: 18px; margin: 10px 0; }
+            p { font-size: 11px; margin: 5px 0; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10px; }
+            th { background-color: #f0f0f0; text-align: left; font-weight: bold; color: black; padding: 4px !important; border: 1px solid #ddd; }
+            td { padding: 4px !important; border: 1px solid #ddd; }
+            tr:nth-child(even) { background: #f9f9f9; }
+            .total-row { font-weight: bold; background-color: #f0f0f0; }
+            .amount { text-align: right; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            Werbeteam Dippel GmbH · Fichtenhain 7 · 24558 Henstedt-Ulzburg
+        </div>
+        
+        <h1>Rechnungsbericht</h1>
+        <p>Datum: """ + str(frappe.utils.today()) + """</p>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Bezeichnung</th>
+                    <th>Referenz</th>
+                    <th>Lieferdatum</th>
+                    <th>Kommission</th>
+                    <th>Kunde</th>
+                    <th>Zahlungsstichtag</th>
+                    <th>Datum</th>
+                    <th>Status</th>
+                    <th class="amount">Gesamtbetrag</th>
+                </tr>
+            </thead>
+            <tbody>
+    """
+    
+    total_amount = 0
+    
+    for inv in invoices:
+        # Map status to German labels
+        status_map = {
+            'Draft': 'Entwurf',
+            'Submitted': 'Eingereicht',
+            'Overdue': 'Überfällig',
+            'Paid': 'Bezahlt',
+            'Return': 'Rückgabe',
+            'Credit Note Issued': 'Gutschrift'
+        }
+        status_de = status_map.get(inv.get('status', ''), inv.get('status', ''))
+        
+        # Get commission as text (don't convert)
+        commission = str(inv.get('custom_kommission', ''))
+        
+        html += "<tr>"
+        html += "<td>" + str(inv['name']) + "</td>"
+        html += "<td>" + str(inv.get('title', '')) + "</td>"
+        html += "<td>" + str(inv.get('custom_referenz', '')) + "</td>"
+        html += "<td>" + str(inv.get('custom_lieferdatum', '')) + "</td>"
+        html += "<td>" + commission + "</td>"
+        html += "<td>" + str(inv.get('customer', '')) + "</td>"
+        html += "<td>" + str(inv.get('due_date', '')) + "</td>"
+        html += "<td>" + str(inv.get('posting_date', '')) + "</td>"
+        html += "<td>" + status_de + "</td>"
+        html += "<td class='amount'>" + "{:,.2f}".format(float(inv['grand_total'])).replace('.', ',') + " EUR</td>"
+        html += "</tr>"
+        
+        total_amount += float(inv['grand_total'])
+    
+    html += """            </tbody>
+        </table>
+        
+        <table style="margin-top: 20px; width: 100%; border-collapse: collapse;">
+            <tr class="total-row">
+                <td colspan="9" style="text-align: left; padding: 4px !important; border: 1px solid transparent;">Gesamtbetrag netto</td>
+                <td style="text-align: right; padding: 4px !important; border: 1px solid transparent;">"""
+    
+    html += "{:,.2f}".format(total_amount).replace('.', ',') + """ EUR</td>
+            </tr>
+        </table>
+    </body>
+    </html>"""
+    
+    # Generate PDF with landscape orientation
+    from frappe.utils.pdf import get_pdf
+    pdf_options = {
+        'orientation': 'Landscape',
+        'page-size': 'A4',
+        'margin-top': '1mm',
+        'margin-bottom': '1mm',
+        'margin-left': '1mm',
+        'margin-right': '1mm'
+    }
+    pdf_content = get_pdf(html, options=pdf_options)
+    
+    # Save as file and return URL
+    file_doc = frappe.get_doc({
+        'doctype': 'File',
+        'file_name': "Rechnungsbericht_" + str(frappe.utils.today()) + ".pdf",
+        'content': pdf_content,
+        'is_private': 0
+    })
+    file_doc.insert(ignore_permissions=True)
+    
+    return {"file_url": file_doc.file_url}

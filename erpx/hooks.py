@@ -67,6 +67,7 @@ after_install = "erpx.custom_scripts.custom_fields_einvoice.execute"
 after_migrate = "erpx.custom_scripts.custom_fields_einvoice.execute"
 
 
+
 # Apps
 # ------------------
 
