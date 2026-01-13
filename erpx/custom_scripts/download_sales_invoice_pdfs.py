@@ -614,28 +614,47 @@ def generate_sales_invoice_list_pdf(selected_invoices=None):
         invoice_list = [x.strip() for x in selected_invoices.split(',')]
     else:
         frappe.throw("No invoices selected")
-    
+
     # Fetch invoice data
     invoices = frappe.get_all(
         "Sales Invoice",
         filters={"name": ["in", invoice_list]},
         fields=[
-            "name", 
-            "title", 
-            "customer", 
-            "due_date", 
-            "posting_date", 
-            "status", 
+            "name",
+            "title",
+            "customer",
+            "due_date",
+            "posting_date",
+            "status",
             "grand_total",
             "custom_referenz",
             "custom_lieferdatum",
-            "custom_kommission"
+            "custom_kommission",
+            "company"
         ]
     )
-    
+
     if not invoices:
         frappe.throw("No invoices found")
-    
+
+    # Get company info from first invoice
+    company_name = invoices[0].get('company', '')
+    company_doc = frappe.get_doc('Company', company_name)
+
+    # Get company address - search by name containing company name
+    company_address = frappe.db.get_value('Address',
+        filters={'address_title': company_name},
+        fieldname=['address_line1', 'pincode', 'city']
+    )
+
+    if company_address:
+        address_line = company_address[0] or ''
+        pincode = company_address[1] or ''
+        city = company_address[2] or ''
+        header_text = company_doc.company_name + " · " + address_line + " · " + pincode + " " + city
+    else:
+        header_text = company_doc.company_name
+
     # Create HTML
     html = """<!DOCTYPE html>
     <html>
@@ -657,12 +676,12 @@ def generate_sales_invoice_list_pdf(selected_invoices=None):
     </head>
     <body>
         <div class="header">
-            Werbeteam Dippel GmbH · Fichtenhain 7 · 24558 Henstedt-Ulzburg
+            """ + header_text + """
         </div>
-        
+
         <h1>Rechnungsbericht</h1>
         <p>Datum: """ + str(frappe.utils.today()) + """</p>
-        
+
         <table>
             <thead>
                 <tr>
@@ -680,9 +699,9 @@ def generate_sales_invoice_list_pdf(selected_invoices=None):
             </thead>
             <tbody>
     """
-    
+
     total_amount = 0
-    
+
     for inv in invoices:
         # Map status to German labels
         status_map = {
@@ -694,10 +713,10 @@ def generate_sales_invoice_list_pdf(selected_invoices=None):
             'Credit Note Issued': 'Gutschrift'
         }
         status_de = status_map.get(inv.get('status', ''), inv.get('status', ''))
-        
+
         # Get commission as text (don't convert)
         commission = str(inv.get('custom_kommission', ''))
-        
+
         html += "<tr>"
         html += "<td>" + str(inv['name']) + "</td>"
         html += "<td>" + str(inv.get('title', '')) + "</td>"
@@ -710,23 +729,23 @@ def generate_sales_invoice_list_pdf(selected_invoices=None):
         html += "<td>" + status_de + "</td>"
         html += "<td class='amount'>" + "{:,.2f}".format(float(inv['grand_total'])).replace('.', ',') + " EUR</td>"
         html += "</tr>"
-        
+
         total_amount += float(inv['grand_total'])
-    
+
     html += """            </tbody>
         </table>
-        
+
         <table style="margin-top: 20px; width: 100%; border-collapse: collapse;">
             <tr class="total-row">
                 <td colspan="9" style="text-align: left; padding: 4px !important; border: 1px solid transparent;">Gesamtbetrag netto</td>
                 <td style="text-align: right; padding: 4px !important; border: 1px solid transparent;">"""
-    
+
     html += "{:,.2f}".format(total_amount).replace('.', ',') + """ EUR</td>
             </tr>
         </table>
     </body>
     </html>"""
-    
+
     # Generate PDF with landscape orientation
     from frappe.utils.pdf import get_pdf
     pdf_options = {
@@ -738,7 +757,7 @@ def generate_sales_invoice_list_pdf(selected_invoices=None):
         'margin-right': '1mm'
     }
     pdf_content = get_pdf(html, options=pdf_options)
-    
+
     # Save as file and return URL
     file_doc = frappe.get_doc({
         'doctype': 'File',
@@ -747,5 +766,5 @@ def generate_sales_invoice_list_pdf(selected_invoices=None):
         'is_private': 0
     })
     file_doc.insert(ignore_permissions=True)
-    
+
     return {"file_url": file_doc.file_url}

@@ -2,7 +2,7 @@ import frappe
 
 @frappe.whitelist()
 def get_analysis(date_filter="Current Year", year=None):
-    """API endpoint for sales invoice analysis"""
+    """API endpoint for sales invoice analysis - Paid and Unpaid invoices with deductions"""
     
     if date_filter == "Last Three Months":
         date_condition = "si.posting_date >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)"
@@ -16,12 +16,16 @@ def get_analysis(date_filter="Current Year", year=None):
     query = f"""
         SELECT 
             DATE_FORMAT(si.posting_date, '%Y-%m') AS month,
-            SUM(CASE WHEN si.status NOT IN ('Paid', 'Return', 'Credit Note Issued') THEN si.net_total ELSE 0 END) AS unbezahlter_nettobetrag,
-            SUM(CASE WHEN si.status IN ('Paid', 'Return', 'Credit Note Issued') THEN si.net_total - IFNULL(deductions.total_deductions, 0) ELSE 0 END) AS bezahlter_nettobetrag,
-            SUM(si.net_total) AS umsatz_nettobetraege,
-            SUM(CASE WHEN si.status IN ('Paid', 'Return', 'Credit Note Issued') THEN IFNULL(deductions.total_deductions, 0) ELSE 0 END) AS bezahlter_abzuege,
-            SUM(CASE WHEN si.status NOT IN ('Paid', 'Return', 'Credit Note Issued') THEN si.net_total ELSE 0 END) + 
-            SUM(CASE WHEN si.status IN ('Paid', 'Return', 'Credit Note Issued') THEN si.net_total - IFNULL(deductions.total_deductions, 0) ELSE 0 END) AS netto_nach_abzuegen
+            SUM(CASE 
+                WHEN si.status NOT IN ('Paid', 'Return', 'Credit Note Issued') AND si.is_return = 0
+                THEN si.net_total 
+                ELSE 0 
+            END) AS unbezahlter_nettobetrag,
+            SUM(CASE 
+                WHEN si.status = 'Paid' AND si.is_return = 0
+                THEN si.net_total - IFNULL(deductions.total_deductions, 0)
+                ELSE 0 
+            END) AS bezahlter_nettobetrag
         FROM `tabSales Invoice` si
         LEFT JOIN (
             SELECT 
@@ -33,17 +37,24 @@ def get_analysis(date_filter="Current Year", year=None):
             WHERE per.reference_doctype = 'Sales Invoice'
             GROUP BY per.reference_name
         ) deductions ON deductions.reference_name = si.name
-        WHERE si.docstatus != 0
+        WHERE si.docstatus = 1
           AND {date_condition}
         GROUP BY month
+        
         UNION ALL
+        
         SELECT 
             'Total' AS month,
-            SUM(CASE WHEN si.status NOT IN ('Paid', 'Return', 'Credit Note Issued') THEN si.net_total ELSE 0 END) AS unbezahlter_nettobetrag,
-            SUM(CASE WHEN si.status IN ('Paid', 'Return', 'Credit Note Issued') THEN si.net_total - IFNULL(deductions.total_deductions, 0) ELSE 0 END) AS bezahlter_nettobetrag,
-            SUM(si.net_total) AS umsatz_nettobetraege,
-            SUM(CASE WHEN si.status IN ('Paid', 'Return', 'Credit Note Issued') THEN IFNULL(deductions.total_deductions, 0) ELSE 0 END) AS bezahlter_abzuege,
-            SUM(si.net_total) - SUM(IFNULL(deductions.total_deductions, 0)) AS netto_nach_abzuegen
+            SUM(CASE 
+                WHEN si.status NOT IN ('Paid', 'Return', 'Credit Note Issued') AND si.is_return = 0
+                THEN si.net_total 
+                ELSE 0 
+            END) AS unbezahlter_nettobetrag,
+            SUM(CASE 
+                WHEN si.status = 'Paid' AND si.is_return = 0
+                THEN si.net_total - IFNULL(deductions.total_deductions, 0)
+                ELSE 0 
+            END) AS bezahlter_nettobetrag
         FROM `tabSales Invoice` si
         LEFT JOIN (
             SELECT 
@@ -55,8 +66,9 @@ def get_analysis(date_filter="Current Year", year=None):
             WHERE per.reference_doctype = 'Sales Invoice'
             GROUP BY per.reference_name
         ) deductions ON deductions.reference_name = si.name
-        WHERE si.docstatus != 0
+        WHERE si.docstatus = 1
           AND {date_condition}
+        
         ORDER BY 
             CASE 
                 WHEN month = 'Total' THEN 2
