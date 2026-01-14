@@ -66,6 +66,13 @@ after_install = "erpx.custom_scripts.custom_fields_einvoice.execute"
 # Run after every migration/update
 after_migrate = "erpx.custom_scripts.custom_fields_einvoice.execute"
 
+# Jinja qr fix
+jinja = {
+    "methods": [
+        "epcqrcode.generator.get_qr_html_safe"
+    ]
+}
+
 
 
 # Apps
