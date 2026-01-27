@@ -24,7 +24,6 @@ def patch_erpnext():
         SalesOrder.validate_proj_cust = dummy_validate_proj_cust
         DeliveryNote.validate_proj_cust = dummy_validate_proj_cust
         
-        print("Successfully patched customer-project validation")
     except Exception as e:
         print(f"Error patching: {e}")
 
