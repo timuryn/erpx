@@ -231,24 +231,24 @@ def download_invoices_with_excel_progress(from_date=None, to_date=None, session_
     try:
         # Get invoices by date range with deductions calculation
         invoices_query = """
-            SELECT 
-                si.name, 
+            SELECT
+                si.name,
                 si.customer,
                 si.taxes_and_charges,
                 si.status,
-                si.posting_date, 
-                si.due_date, 
+                si.posting_date,
+                si.due_date,
                 si.base_grand_total,
                 IFNULL(SUM(d.amount), 0) AS deductions,
                 si.customer_name
             FROM `tabSales Invoice` si
-            LEFT JOIN `tabPayment Entry Reference` per 
+            LEFT JOIN `tabPayment Entry Reference` per
                 ON per.reference_name = si.name AND per.reference_doctype = 'Sales Invoice'
-            LEFT JOIN `tabPayment Entry` pe 
+            LEFT JOIN `tabPayment Entry` pe
                 ON pe.name = per.parent AND pe.docstatus = 1
-            LEFT JOIN `tabPayment Entry Deduction` d 
+            LEFT JOIN `tabPayment Entry Deduction` d
                 ON d.parent = pe.name
-            WHERE si.docstatus = 1 
+            WHERE si.docstatus = 1
               AND si.posting_date BETWEEN %(from_date)s AND %(to_date)s
             GROUP BY si.name
             ORDER BY si.name ASC
@@ -336,15 +336,15 @@ def download_invoices_with_excel_progress(from_date=None, to_date=None, session_
 
                 # Add row with Abzüge column
                 xlsx_data.append([
-                    invoice.name, 
-                    konto, 
-                    tax_code, 
+                    invoice.name,
+                    konto,
+                    tax_code,
                     transformed_status,
-                    invoice.posting_date, 
-                    invoice.due_date, 
+                    invoice.posting_date,
+                    invoice.due_date,
                     umsatz,
                     deductions,  # This is the new Abzüge column
-                    debitorennummer, 
+                    debitorennummer,
                     invoice.customer_name
                 ])
 
@@ -709,6 +709,7 @@ def generate_sales_invoice_list_pdf(selected_invoices=None):
             'Submitted': 'Eingereicht',
             'Overdue': 'Überfällig',
             'Paid': 'Bezahlt',
+            'Unpaid': 'Unbezahlt',
             'Return': 'Rückgabe',
             'Credit Note Issued': 'Gutschrift'
         }
