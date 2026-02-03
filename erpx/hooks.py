@@ -60,7 +60,3 @@ after_install = "erpx.custom_scripts.custom_fields_einvoice.execute"
 # Run after every migration/update
 after_migrate = "erpx.custom_scripts.custom_fields_einvoice.execute"
 
-# Override ERPNext query methods to allow completed projects
-# override_whitelisted_methods = {
-#     "erpnext.controllers.queries.get_project_name": "erpx.custom_scripts.queries.get_project_name"
-# }
