@@ -1,5 +1,6 @@
-# File: erpx/erpx/project_followup.py
+# File: erpx/erpx/email/project_followup.py
 # Production-ready project followup notification system
+# FIXED: Use email_id instead of account name + flush email queue
 
 import frappe
 from frappe.utils import getdate, add_days, nowdate
@@ -120,9 +121,18 @@ def send_project_followup_notifications():
     """
     send_first_followup_notifications()
     send_recurring_followup_notifications()
+    
+    # IMPORTANT: Flush the email queue to actually send the emails
+    frappe.log_error("Flushing email queue...", "Project Followup - Queue Flush")
+    try:
+        from frappe.email.queue import flush
+        flush()
+        frappe.log_error("Email queue flushed successfully", "Project Followup - Queue Flush")
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Project Followup - Queue Flush Error")
 
 def send_first_followup_notifications():
-    """Send first follow-up notification for projects created 10 days ago"""
+    """Send first follow-up notification for projects at least 10 days old"""
     cutoff_date = "2025-07-01"
     today = nowdate()
     ten_days_ago = add_days(today, -10)
@@ -130,27 +140,28 @@ def send_first_followup_notifications():
     projects = frappe.get_all(
         'Project',
         filters=[
-            ['creation', '>=', ten_days_ago + ' 00:00:00'],
             ['creation', '<=', ten_days_ago + ' 23:59:59'],
+            ['creation', '>=', cutoff_date + ' 00:00:00'],
             ['status', 'not in', ['Completed', 'Cancelled']],
             ['owner', '!=', '']
         ],
         fields=['name', 'project_name', 'owner', 'status', 'creation', 'modified']
     )
 
-    # Filter out projects created before July 1, 2025
-    cutoff_date_obj = getdate(cutoff_date)
-    filtered_projects = [p for p in projects if getdate(p.creation) >= cutoff_date_obj]
+    sent_count = 0
+    skipped_count = 0
 
-    for project in filtered_projects:
+    for project in projects:
         current_project = frappe.get_doc('Project', project.name)
-        
+
         # Skip if status changed after query
         if current_project.status in ['Completed', 'Cancelled']:
+            skipped_count += 1
             continue
 
         # Skip if recent activity detected
         if check_project_timeline_activity(current_project):
+            skipped_count += 1
             continue
 
         # Check if follow-up already sent
@@ -166,7 +177,12 @@ def send_first_followup_notifications():
         )
 
         if not existing_communication:
-            send_followup_email(current_project, notification_type="first", notification_number=1)
+            if send_followup_email(current_project, notification_type="first", notification_number=1):
+                sent_count += 1
+            else:
+                skipped_count += 1
+
+    frappe.log_error(f"First notifications: {sent_count} sent, {skipped_count} skipped", "Project Followup Summary")
 
 def send_recurring_followup_notifications():
     """Send recurring follow-up notifications every 5 days after the first notification"""
@@ -182,15 +198,20 @@ def send_recurring_followup_notifications():
         fields=['name', 'project_name', 'owner', 'status', 'creation', 'modified']
     )
 
+    sent_count = 0
+    skipped_count = 0
+
     for project in projects:
         current_project = frappe.get_doc('Project', project.name)
-        
+
         # Skip if status changed after query
         if current_project.status in ['Completed', 'Cancelled']:
+            skipped_count += 1
             continue
 
         # Skip if recent activity detected
         if check_project_timeline_activity(current_project):
+            skipped_count += 1
             continue
 
         # Get existing follow-up communications
@@ -215,10 +236,15 @@ def send_recurring_followup_notifications():
             else:
                 interval_days_ago = getdate(add_days(nowdate(), -5))
 
-            # Send if interval has passed
+            # Send if interval has passed (exact date match)
             if last_notification_date == interval_days_ago:
                 notification_count = len(existing_communications) + 1
-                send_followup_email(current_project, notification_type="recurring", notification_number=notification_count)
+                if send_followup_email(current_project, notification_type="recurring", notification_number=notification_count):
+                    sent_count += 1
+                else:
+                    skipped_count += 1
+
+    frappe.log_error(f"Recurring notifications: {sent_count} sent, {skipped_count} skipped", "Project Followup Summary")
 
 def send_followup_email(project, notification_type="first", notification_number=1):
     """Send follow-up email to project owner using the Notification email account"""
@@ -229,27 +255,39 @@ def send_followup_email(project, notification_type="first", notification_number=
             return False
 
         owner = frappe.get_doc('User', project.owner)
-        
-        # Get Notification email account
+
+        # Verify owner has email
+        if not owner.email:
+            frappe.log_error(
+                f"Project owner {project.owner} has no email address",
+                "Project Followup - No Email Address"
+            )
+            return False
+
+        # Get Notification email account and extract the email address
         notification_email_account = frappe.get_value(
             'Email Account',
             filters={'email_id': 'notification@dippelwerbung.de'},
             fieldname='name'
         )
-        
+
         if not notification_email_account:
             notification_email_account = frappe.get_value(
                 'Email Account',
                 filters={'name': 'Notification'},
                 fieldname='name'
             )
-        
+
         if not notification_email_account:
             frappe.log_error(
-                "Notification email account not found",
+                "Notification email account not found. Create Email Account with name='Notification'",
                 "Project Followup - Email Account Missing"
             )
             return False
+
+        # IMPORTANT: Get the actual email address from the account, not the account name
+        email_doc = frappe.get_doc('Email Account', notification_email_account)
+        sender_email = email_doc.email_id
 
         # Generate email content
         project_link = f"https://rechnung.dippelwerbung.de/app/project/{project.name}"
@@ -296,7 +334,7 @@ def send_followup_email(project, notification_type="first", notification_number=
         Ihr Projektmanagement-System</p>
         """
 
-        # Create communication record
+        # Create communication record with CORRECT email address
         communication = frappe.get_doc({
             'doctype': 'Communication',
             'communication_type': 'Communication',
@@ -304,21 +342,24 @@ def send_followup_email(project, notification_type="first", notification_number=
             'sent_or_received': 'Sent',
             'subject': subject,
             'content': message,
-            'sender': notification_email_account,
+            'sender': sender_email,  # Use email address, not account name!
             'recipients': owner.email,
-            'send_email': True
+            'send_email': True,
+            'reference_doctype': 'Project',
+            'reference_name': project.name
         })
 
         communication.insert(ignore_permissions=True)
 
-        # Send the email
+        # Send the email with CORRECT email address
         frappe.sendmail(
             recipients=[owner.email],
-            sender=notification_email_account,
+            sender=sender_email,  # Use email address, not account name!
             subject=subject,
             message=message
         )
 
+        frappe.log_error(f"Email sent: {project.name} - {subject}", "Project Followup - Email Sent")
         return True
 
     except Exception as e:

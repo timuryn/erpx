@@ -78,3 +78,47 @@ def get_analysis(date_filter="Current Year", year=None):
     """
     
     return frappe.db.sql(query, as_dict=True)
+
+
+@frappe.whitelist()
+def get_item_analysis(item_code, date_filter="Current Year", year=None):
+    """API endpoint for item revenue analysis by month"""
+    if date_filter == "Last Three Months":
+        date_condition = "si.posting_date >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)"
+    elif date_filter == "Last Year":
+        date_condition = "YEAR(si.posting_date) = YEAR(CURDATE()) - 1"
+    elif date_filter == "Custom Year" and year:
+        date_condition = "YEAR(si.posting_date) = " + str(int(year))
+    else:  # Current Year
+        date_condition = "YEAR(si.posting_date) = YEAR(CURDATE())"
+
+    query = """
+        SELECT
+            DATE_FORMAT(si.posting_date, '%%Y-%%m') AS month,
+            SUM(sii.amount) AS total_amount,
+            SUM(sii.qty) AS total_qty
+        FROM `tabSales Invoice` si
+        INNER JOIN `tabSales Invoice Item` sii ON si.name = sii.parent
+        WHERE sii.item_code = %s
+        AND si.docstatus = 1
+        AND """ + date_condition + """
+        GROUP BY month
+        UNION ALL
+        SELECT
+            'Total' AS month,
+            SUM(sii.amount) AS total_amount,
+            SUM(sii.qty) AS total_qty
+        FROM `tabSales Invoice` si
+        INNER JOIN `tabSales Invoice Item` sii ON si.name = sii.parent
+        WHERE sii.item_code = %s
+        AND si.docstatus = 1
+        AND """ + date_condition + """
+        ORDER BY
+            CASE
+                WHEN month = 'Total' THEN 2
+                ELSE 1
+            END,
+            STR_TO_DATE(CONCAT(month, '-01'), '%%Y-%%m-%%d') ASC
+    """
+
+    return frappe.db.sql(query, (item_code, item_code), as_dict=True)
