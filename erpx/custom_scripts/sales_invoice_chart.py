@@ -3,35 +3,51 @@ import frappe
 @frappe.whitelist()
 def get_analysis(date_filter="Current Year", year=None):
     """API endpoint for sales invoice analysis - Paid and Unpaid invoices with deductions"""
-    
+
+    # Build date condition based on filter type
     if date_filter == "Last Three Months":
         date_condition = "si.posting_date >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)"
+    elif date_filter == "Last 12 Months":
+        date_condition = "si.posting_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)"
     elif date_filter == "Last Year":
         date_condition = "YEAR(si.posting_date) = YEAR(CURDATE()) - 1"
     elif date_filter == "Custom Year" and year:
-        date_condition = f"YEAR(si.posting_date) = {int(year)}"
+        # Handle both single year (2025) and range (2025-2026)
+        if '-' in str(year):
+            try:
+                years = str(year).split('-')
+                start_year = int(years[0].strip())
+                end_year = int(years[1].strip())
+                date_condition = f"YEAR(si.posting_date) >= {start_year} AND YEAR(si.posting_date) <= {end_year}"
+            except (ValueError, IndexError):
+                date_condition = "YEAR(si.posting_date) = YEAR(CURDATE())"
+        else:
+            try:
+                date_condition = f"YEAR(si.posting_date) = {int(year)}"
+            except ValueError:
+                date_condition = "YEAR(si.posting_date) = YEAR(CURDATE())"
     else:  # Current Year
         date_condition = "YEAR(si.posting_date) = YEAR(CURDATE())"
-    
+
     query = f"""
-        SELECT 
+        SELECT
             DATE_FORMAT(si.posting_date, '%Y-%m') AS month,
-            SUM(CASE 
+            SUM(CASE
                 WHEN si.status NOT IN ('Paid', 'Return', 'Credit Note Issued') AND si.is_return = 0
-                THEN si.net_total 
-                ELSE 0 
+                THEN si.net_total
+                ELSE 0
             END) AS unbezahlter_nettobetrag,
-            SUM(CASE 
+            SUM(CASE
                 WHEN si.status = 'Paid' AND si.is_return = 0
                 THEN si.net_total - IFNULL(deductions.total_deductions, 0)
-                ELSE 0 
+                ELSE 0
             END) AS bezahlter_nettobetrag
         FROM `tabSales Invoice` si
         LEFT JOIN (
-            SELECT 
+            SELECT
                 per.reference_name,
                 SUM(d.amount) AS total_deductions
-            FROM `tabPayment Entry Reference` per 
+            FROM `tabPayment Entry Reference` per
             JOIN `tabPayment Entry` pe ON pe.name = per.parent AND pe.docstatus = 1
             JOIN `tabPayment Entry Deduction` d ON d.parent = pe.name
             WHERE per.reference_doctype = 'Sales Invoice'
@@ -40,27 +56,27 @@ def get_analysis(date_filter="Current Year", year=None):
         WHERE si.docstatus = 1
           AND {date_condition}
         GROUP BY month
-        
+
         UNION ALL
-        
-        SELECT 
+
+        SELECT
             'Total' AS month,
-            SUM(CASE 
+            SUM(CASE
                 WHEN si.status NOT IN ('Paid', 'Return', 'Credit Note Issued') AND si.is_return = 0
-                THEN si.net_total 
-                ELSE 0 
+                THEN si.net_total
+                ELSE 0
             END) AS unbezahlter_nettobetrag,
-            SUM(CASE 
+            SUM(CASE
                 WHEN si.status = 'Paid' AND si.is_return = 0
                 THEN si.net_total - IFNULL(deductions.total_deductions, 0)
-                ELSE 0 
+                ELSE 0
             END) AS bezahlter_nettobetrag
         FROM `tabSales Invoice` si
         LEFT JOIN (
-            SELECT 
+            SELECT
                 per.reference_name,
                 SUM(d.amount) AS total_deductions
-            FROM `tabPayment Entry Reference` per 
+            FROM `tabPayment Entry Reference` per
             JOIN `tabPayment Entry` pe ON pe.name = per.parent AND pe.docstatus = 1
             JOIN `tabPayment Entry Deduction` d ON d.parent = pe.name
             WHERE per.reference_doctype = 'Sales Invoice'
@@ -68,31 +84,48 @@ def get_analysis(date_filter="Current Year", year=None):
         ) deductions ON deductions.reference_name = si.name
         WHERE si.docstatus = 1
           AND {date_condition}
-        
-        ORDER BY 
-            CASE 
+
+        ORDER BY
+            CASE
                 WHEN month = 'Total' THEN 2
                 ELSE 1
             END,
             STR_TO_DATE(CONCAT(month, '-01'), '%Y-%m-%d') ASC
     """
-    
+
     return frappe.db.sql(query, as_dict=True)
 
 
 @frappe.whitelist()
 def get_item_analysis(item_code, date_filter="Current Year", year=None):
     """API endpoint for item revenue analysis by month"""
+    
+    # Build date condition based on filter type
     if date_filter == "Last Three Months":
         date_condition = "si.posting_date >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)"
+    elif date_filter == "Last 12 Months":
+        date_condition = "si.posting_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)"
     elif date_filter == "Last Year":
         date_condition = "YEAR(si.posting_date) = YEAR(CURDATE()) - 1"
     elif date_filter == "Custom Year" and year:
-        date_condition = "YEAR(si.posting_date) = " + str(int(year))
+        # Handle both single year (2025) and range (2025-2026)
+        if '-' in str(year):
+            try:
+                years = str(year).split('-')
+                start_year = int(years[0].strip())
+                end_year = int(years[1].strip())
+                date_condition = f"YEAR(si.posting_date) >= {start_year} AND YEAR(si.posting_date) <= {end_year}"
+            except (ValueError, IndexError):
+                date_condition = "YEAR(si.posting_date) = YEAR(CURDATE())"
+        else:
+            try:
+                date_condition = f"YEAR(si.posting_date) = {int(year)}"
+            except ValueError:
+                date_condition = "YEAR(si.posting_date) = YEAR(CURDATE())"
     else:  # Current Year
         date_condition = "YEAR(si.posting_date) = YEAR(CURDATE())"
 
-    query = """
+    query = f"""
         SELECT
             DATE_FORMAT(si.posting_date, '%%Y-%%m') AS month,
             SUM(sii.amount) AS total_amount,
@@ -101,9 +134,11 @@ def get_item_analysis(item_code, date_filter="Current Year", year=None):
         INNER JOIN `tabSales Invoice Item` sii ON si.name = sii.parent
         WHERE sii.item_code = %s
         AND si.docstatus = 1
-        AND """ + date_condition + """
+        AND {date_condition}
         GROUP BY month
+        
         UNION ALL
+        
         SELECT
             'Total' AS month,
             SUM(sii.amount) AS total_amount,
@@ -112,7 +147,8 @@ def get_item_analysis(item_code, date_filter="Current Year", year=None):
         INNER JOIN `tabSales Invoice Item` sii ON si.name = sii.parent
         WHERE sii.item_code = %s
         AND si.docstatus = 1
-        AND """ + date_condition + """
+        AND {date_condition}
+        
         ORDER BY
             CASE
                 WHEN month = 'Total' THEN 2
