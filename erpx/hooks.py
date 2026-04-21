@@ -64,3 +64,35 @@ after_migrate = "erpx.custom_scripts.custom_fields_einvoice.execute"
 override_whitelisted_methods = {
     "erpnext.controllers.queries.get_project_name": "erpx.custom_scripts.queries.get_project_name"
 }
+
+# Override eu_einvoice §13b UStG tax category
+def _setup_einvoice_13b_override():
+	"""Override eu_einvoice to set AE category, exemption code, and 0% rate for §13b invoices"""
+	try:
+		from eu_einvoice.european_e_invoice.custom.sales_invoice import EInvoiceGenerator
+
+		original_add_line_item = EInvoiceGenerator._add_line_item
+		original_create_einvoice = EInvoiceGenerator.create_einvoice
+
+		def patched_add_line_item(self, item):
+			original_add_line_item(self, item)
+			if self.invoice.taxes_and_charges == "Bauleistungen nach § 13b UStG - WDG":
+				if self.doc.trade.items.children:
+					last_li = self.doc.trade.items.children[-1]
+					last_li.settlement.trade_tax.category_code = "AE"
+
+		def patched_create_einvoice(self):
+			original_create_einvoice(self)
+			if self.invoice.taxes_and_charges == "Bauleistungen nach § 13b UStG - WDG":
+				if self.doc.trade.settlement.trade_tax.children:
+					header_tax = self.doc.trade.settlement.trade_tax.children[0]
+					header_tax.category_code = "AE"
+					header_tax.exemption_reason_code = "VATEX-EU-AE"
+					header_tax.rate_applicable_percent = 0.0
+
+		EInvoiceGenerator._add_line_item = patched_add_line_item
+		EInvoiceGenerator.create_einvoice = patched_create_einvoice
+	except Exception as e:
+		pass
+
+_setup_einvoice_13b_override()
