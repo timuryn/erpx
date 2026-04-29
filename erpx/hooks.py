@@ -14,9 +14,10 @@ app_include_js = [
     "assets/erpx/js/renew_filter.js"
 ]
 
-# Bigger notification bell
+# Bigger notification bell and Page width
 app_include_css = [
-    "/assets/erpx/css/notification_style.css"
+    "/assets/erpx/css/notification_style.css",
+    "/assets/erpx/css/desk_layout.css"
 ]
 
 # Send email immediately and override custom status Aufwarten for project
