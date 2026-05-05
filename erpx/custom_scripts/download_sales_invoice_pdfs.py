@@ -1,4 +1,3 @@
-# apps/erpx/erpx/api/download_sales_invoice_pdfs.py
 import frappe
 import zipfile
 import io
@@ -204,6 +203,7 @@ def download_selected_sales_invoices_with_progress(selected_invoices=None, from_
 def download_invoices_with_excel_progress(from_date=None, to_date=None, session_id=None):
     """
     Download both Sales Invoice PDFs and an Excel file with progress tracking
+    Includes payment method and deductions columns
     """
     start_time = time.time()
 
@@ -229,7 +229,7 @@ def download_invoices_with_excel_progress(from_date=None, to_date=None, session_
         _active_sessions.add(session_id)
 
     try:
-        # Get invoices by date range with deductions calculation
+        # Get invoices by date range with deductions calculation and payment method
         invoices_query = """
             SELECT
                 si.name,
@@ -240,7 +240,8 @@ def download_invoices_with_excel_progress(from_date=None, to_date=None, session_
                 si.due_date,
                 si.base_grand_total,
                 IFNULL(SUM(d.amount), 0) AS deductions,
-                si.customer_name
+                si.customer_name,
+                COALESCE(GROUP_CONCAT(DISTINCT pe.mode_of_payment SEPARATOR ', '), '') AS payment_method
             FROM `tabSales Invoice` si
             LEFT JOIN `tabPayment Entry Reference` per
                 ON per.reference_name = si.name AND per.reference_doctype = 'Sales Invoice'
@@ -289,15 +290,16 @@ def download_invoices_with_excel_progress(from_date=None, to_date=None, session_
                 "start_time": start_time
             }, expires_in_sec=600)
 
-            # Prepare data for Excel with Abzüge column
+            # Prepare data for Excel with Abzüge and Zahlungsart columns
             xlsx_data = []
             headers = [
                 "Rechnung", "Konto", "Gegenkonto", "Soll/Haben",
-                "Datum", "Fälligkeit", "Umsatz", "Abzüge", "Debitorennummer", "Debitor"
+                "Datum", "Fälligkeit", "Umsatz", "Abzüge", "Zahlungsart", 
+                "Debitorennummer", "Debitor"
             ]
             xlsx_data.append(headers)
 
-            # Add invoice data with transformations and deductions
+            # Add invoice data with transformations, deductions, and payment method
             for invoice in invoices:
                 # Transform customer to "Konto"
                 try:
@@ -334,7 +336,10 @@ def download_invoices_with_excel_progress(from_date=None, to_date=None, session_
                 deductions = float(invoice.deductions or 0)
                 umsatz = float(invoice.base_grand_total) - deductions
 
-                # Add row with Abzüge column
+                # Get payment method (empty string if no payment linked)
+                payment_method = invoice.payment_method or ''
+
+                # Add row with Abzüge and Zahlungsart columns
                 xlsx_data.append([
                     invoice.name,
                     konto,
@@ -343,7 +348,8 @@ def download_invoices_with_excel_progress(from_date=None, to_date=None, session_
                     invoice.posting_date,
                     invoice.due_date,
                     umsatz,
-                    deductions,  # This is the new Abzüge column
+                    deductions,  # Abzüge column
+                    payment_method,  # Zahlungsart column
                     debitorennummer,
                     invoice.customer_name
                 ])

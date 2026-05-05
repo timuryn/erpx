@@ -1,6 +1,7 @@
 # File: erpx/erpx/email/project_followup.py
 # Production-ready project followup notification system
 # FIXED: Use email_id instead of account name + flush email queue
+# ADJUSTED: Only send notifications if project status is "Aktion erforderlich!"
 
 import frappe
 from frappe.utils import getdate, add_days, nowdate
@@ -113,15 +114,15 @@ def check_project_timeline_activity(project):
 def send_project_followup_notifications():
     """
     Check all projects created from 01.07.2025 and send follow-up emails:
-    - First notification: 10 days after creation if not completed
-    - Recurring notifications: Every 5 days after first notification if still not completed
-    - Special case: If project status is "Aufwarten", wait 15 days before next notification
+    - Only for projects with status "Aktion erforderlich!"
+    - If status changes to ANY other status, notifications stop immediately
+    - First notification: 10 days after creation
+    - Recurring notifications: Every 5 days after first notification
     - Timeline activity reset: Any new activity in project timeline resets the countdown
-    - Excludes projects with status "Completed" or "Cancelled"
     """
     send_first_followup_notifications()
     send_recurring_followup_notifications()
-    
+
     # IMPORTANT: Flush the email queue to actually send the emails
     frappe.log_error("Flushing email queue...", "Project Followup - Queue Flush")
     try:
@@ -132,7 +133,7 @@ def send_project_followup_notifications():
         frappe.log_error(frappe.get_traceback(), "Project Followup - Queue Flush Error")
 
 def send_first_followup_notifications():
-    """Send first follow-up notification for projects at least 10 days old"""
+    """Send first follow-up notification for projects at least 10 days old with status "Aktion erforderlich!" """
     cutoff_date = "2025-07-01"
     today = nowdate()
     ten_days_ago = add_days(today, -10)
@@ -142,7 +143,7 @@ def send_first_followup_notifications():
         filters=[
             ['creation', '<=', ten_days_ago + ' 23:59:59'],
             ['creation', '>=', cutoff_date + ' 00:00:00'],
-            ['status', 'not in', ['Completed', 'Cancelled']],
+            ['status', '=', 'Aktion erforderlich!'],
             ['owner', '!=', '']
         ],
         fields=['name', 'project_name', 'owner', 'status', 'creation', 'modified']
@@ -154,8 +155,8 @@ def send_first_followup_notifications():
     for project in projects:
         current_project = frappe.get_doc('Project', project.name)
 
-        # Skip if status changed after query
-        if current_project.status in ['Completed', 'Cancelled']:
+        # Skip if status changed to something other than "Aktion erforderlich!"
+        if current_project.status != 'Aktion erforderlich!':
             skipped_count += 1
             continue
 
@@ -185,14 +186,14 @@ def send_first_followup_notifications():
     frappe.log_error(f"First notifications: {sent_count} sent, {skipped_count} skipped", "Project Followup Summary")
 
 def send_recurring_followup_notifications():
-    """Send recurring follow-up notifications every 5 days after the first notification"""
+    """Send recurring follow-up notifications every 5 days after the first notification for projects with status "Aktion erforderlich!" """
     cutoff_date = "2025-07-01"
 
     projects = frappe.get_all(
         'Project',
         filters=[
             ['creation', '>=', cutoff_date + ' 00:00:00'],
-            ['status', 'not in', ['Completed', 'Cancelled']],
+            ['status', '=', 'Aktion erforderlich!'],
             ['owner', '!=', '']
         ],
         fields=['name', 'project_name', 'owner', 'status', 'creation', 'modified']
@@ -204,8 +205,8 @@ def send_recurring_followup_notifications():
     for project in projects:
         current_project = frappe.get_doc('Project', project.name)
 
-        # Skip if status changed after query
-        if current_project.status in ['Completed', 'Cancelled']:
+        # Skip if status changed to something other than "Aktion erforderlich!"
+        if current_project.status != 'Aktion erforderlich!':
             skipped_count += 1
             continue
 
@@ -229,12 +230,9 @@ def send_recurring_followup_notifications():
 
         if existing_communications:
             last_notification_date = getdate(existing_communications[0].creation)
-
-            # Determine interval based on project status
-            if current_project.status == "Aufwarten":
-                interval_days_ago = getdate(add_days(nowdate(), -15))
-            else:
-                interval_days_ago = getdate(add_days(nowdate(), -5))
+            
+            # Always use 5-day interval
+            interval_days_ago = getdate(add_days(nowdate(), -5))
 
             # Send if interval has passed (exact date match)
             if last_notification_date == interval_days_ago:
@@ -249,9 +247,9 @@ def send_recurring_followup_notifications():
 def send_followup_email(project, notification_type="first", notification_number=1):
     """Send follow-up email to project owner using the Notification email account"""
     try:
-        # Final status check before sending
+        # Final status check before sending - only send if status is "Aktion erforderlich!"
         project = frappe.get_doc('Project', project.name)
-        if project.status in ['Completed', 'Cancelled']:
+        if project.status != 'Aktion erforderlich!':
             return False
 
         owner = frappe.get_doc('User', project.owner)
@@ -297,22 +295,17 @@ def send_followup_email(project, notification_type="first", notification_number=
             days_info = "vor 10 Tagen"
             urgency_message = "Bitte überprüfen Sie den Fortschritt und aktualisieren Sie den Status entsprechend."
         else:  # recurring notification
-            if project.status == "Aufwarten":
-                days_since_creation = 10 + (notification_number - 1) * 15
-                status_note = '<p><em>Hinweis: Da das Projekt den Status "Aufwarten" hat, erfolgen Erinnerungen im 15-Tage-Intervall.</em></p>'
-            else:
-                days_since_creation = 10 + (notification_number - 1) * 5
-                status_note = ""
+            days_since_creation = 10 + (notification_number - 1) * 5
 
             if notification_number == 2:
                 subject = f"Nachakquise! - Zweite Erinnerung - {project.project_name} ({project.name})"
-                urgency_message = f'<p><strong style="color: #d73502;">DRINGEND:</strong> Dieses Projekt benötigt Ihre Aufmerksamkeit!</p><p>Bitte aktualisieren Sie den Projektstatus oder wenden Sie sich an Ihren Vorgesetzten, falls Hindernisse bestehen.</p>{status_note}'
+                urgency_message = f'<p><strong style="color: #d73502;">DRINGEND:</strong> Dieses Projekt benötigt Ihre Aufmerksamkeit!</p><p>Bitte aktualisieren Sie den Projektstatus oder wenden Sie sich an Ihren Vorgesetzten, falls Hindernisse bestehen.</p>'
             elif notification_number == 3:
                 subject = f"Nachakquise! - Dritte Erinnerung - {project.project_name} ({project.name})"
-                urgency_message = f'<p><strong style="color: #d73502;">SEHR DRINGEND:</strong> Dieses Projekt ist überfällig!</p><p>Dies ist die dritte Erinnerung. Bitte nehmen Sie sofort Kontakt mit Ihrem Vorgesetzten auf und klären Sie den Status dieses Projekts.</p>{status_note}'
+                urgency_message = f'<p><strong style="color: #d73502;">SEHR DRINGEND:</strong> Dieses Projekt ist überfällig!</p><p>Dies ist die dritte Erinnerung. Bitte nehmen Sie sofort Kontakt mit Ihrem Vorgesetzten auf und klären Sie den Status dieses Projekts.</p>'
             elif notification_number >= 4:
                 subject = f"Nachakquise! - {notification_number}. Erinnerung (KRITISCH) - {project.project_name} ({project.name})"
-                urgency_message = f'<p><strong style="color: #b71c1c; background-color: #ffebee; padding: 5px;">⚠️ KRITISCH:</strong> Dieses Projekt ist kritisch überfällig!</p><p>Dies ist bereits die {notification_number}. Erinnerung für dieses Projekt. Eine sofortige Statusaktualisierung oder Eskalation an das Management ist erforderlich.</p>{status_note}'
+                urgency_message = f'<p><strong style="color: #b71c1c; background-color: #ffebee; padding: 5px;">⚠️ KRITISCH:</strong> Dieses Projekt ist kritisch überfällig!</p><p>Dies ist bereits die {notification_number}. Erinnerung für dieses Projekt. Eine sofortige Statusaktualisierung oder Eskalation an das Management ist erforderlich.</p>'
 
             days_info = f"vor {days_since_creation} Tagen"
 
