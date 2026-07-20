@@ -22,13 +22,17 @@ app_include_css = [
 # Send email immediately and override custom status Aufwarten for project
 doc_events = {
     "Email Queue": {
-        "after_insert": "erpx.email.email_queue.check_and_send_email"
+    "after_insert": "erpx.email.email_queue.check_and_send_email"
     },
     "Project": {
         "before_save": "erpx.custom_scripts.project_status_aufwarten.before_save_project",
         "validate": "erpx.custom_scripts.project_status_aufwarten.validate_project_status",
-        "after_save": "erpx.custom_scripts.project_status_aufwarten.after_save_project"
+        "on_update": "erpx.custom_scripts.project_status_aufwarten.after_save_project"
     }
+}
+
+override_doctype_class = {
+    "Email Queue": "erpx.email.email_queue_override.CustomEmailQueue"
 }
 
 # Project link button and heatmap
