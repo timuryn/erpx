@@ -5,41 +5,82 @@ frappe.ui.form.CustomerQuickEntryForm = class CustomerQuickEntryForm extends fra
         super(doctype, after_insert);
         this.skip_redirect_on_error = true;
     }
-    
+
     render_dialog() {
         this.mandatory = this.get_field();
         super.render_dialog();
     }
-    
-    // Ensure correct mapping for email, phone, and mobile with auto-refresh
+
     insert() {
         const map_field_names = {
             email_address: "email_id",
             mobile_number: "mobile_no",
         };
-        
+
         Object.entries(map_field_names).forEach(([fieldname, new_fieldname]) => {
             if (this.dialog.doc[fieldname]) {
                 this.dialog.doc[new_fieldname] = this.dialog.doc[fieldname];
                 delete this.dialog.doc[fieldname];
             }
         });
-        
-        // Call parent insert method and handle the response
+
         return super.insert().then((response) => {
-            // Multiple approaches to refresh the list/views
-            
-            // Method 1: Try cur_list first
+            // response can be the doc itself or wrapped in .message depending on Frappe version
+            const customer = response && response.message ? response.message : response;
+
+            // ── CREATE ADDRESS + UPDATE primary_address ──
+            if (customer && customer.name && this.dialog.doc.address_line1) {
+                const address_doc = {
+                    doctype: "Address",
+                    address_title: customer.customer_name || customer.name,
+                    address_line1: this.dialog.doc.address_line1,
+                    address_line2: this.dialog.doc.custom_namenszusatz || "",
+                    pincode: this.dialog.doc.pincode,
+                    city: this.dialog.doc.city,
+                    country: this.dialog.doc.country || "Germany",
+                    is_primary_address: 1,
+                    is_primary_billing: 1,
+                    links: [{
+                        link_doctype: "Customer",
+                        link_name: customer.name
+                    }]
+                };
+
+                frappe.call({
+                    method: "frappe.client.insert",
+                    args: { doc: address_doc },
+                    callback: (r) => {
+                        if (r.message) {
+                            // Build the same HTML format your existing customers use
+                            const street_parts = [
+                                this.dialog.doc.address_line1,
+                                this.dialog.doc.custom_namenszusatz
+                            ].filter(Boolean);
+                            const street = street_parts.join(" ");
+                            const city_line = [this.dialog.doc.pincode, this.dialog.doc.city]
+                                .filter(Boolean).join(" ");
+                            const country = (this.dialog.doc.country === "Germany" || !this.dialog.doc.country)
+                                ? "Deutschland"
+                                : this.dialog.doc.country;
+
+                            const html_lines = [street, city_line, country].filter(Boolean);
+                            const html = html_lines.join("<br>\n\n    ") + "\n";
+
+                            // Write it back to Customer so link search shows it immediately
+                            frappe.db.set_value("Customer", customer.name, "primary_address", html);
+                        }
+                    }
+                });
+            }
+            // ── END ──
+
+            // Refresh logic (unchanged)
             if (cur_list && cur_list.doctype === "Customer") {
                 cur_list.refresh();
             }
-            
-            // Method 2: Try to find list view in current page
             if (frappe.get_route()[0] === "List" && frappe.get_route()[1] === "Customer") {
                 frappe.set_route("List", "Customer");
             }
-            
-            // Method 3: Refresh customer link fields
             if (cur_frm && cur_frm.fields_dict) {
                 Object.keys(cur_frm.fields_dict).forEach(fieldname => {
                     const field = cur_frm.fields_dict[fieldname];
@@ -48,15 +89,12 @@ frappe.ui.form.CustomerQuickEntryForm = class CustomerQuickEntryForm extends fra
                     }
                 });
             }
-            
-            // Method 4: Trigger a global refresh event
             frappe.ui.form.trigger_refresh_field_group && frappe.ui.form.trigger_refresh_field_group();
-            
+
             return response;
         });
     }
-    
-    // Define the fields in the quick entry form
+
     get_field() {
         return [
             {

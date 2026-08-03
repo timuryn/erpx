@@ -263,7 +263,6 @@ erpx.SidebarInjector = class {
             { name: "Rechnung", url: "/app/sales-invoice", icon: "🧾" },
             { name: "Kunde", url: "/app/customer", icon: "👤" },
             { name: "Artikel", url: "/app/item", icon: "📦" },
-            { name: "Artikelpreis", url: "/app/item-price", icon: "€" },
             { name: "Brief", url: "/app/item/pdf%20brief", icon: "✉️" },
             { name: "Aufgabe", url: "/app/todo/view/calendar/default", icon: "✓" }
         ];
