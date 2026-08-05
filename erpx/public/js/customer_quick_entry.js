@@ -63,8 +63,7 @@ frappe.ui.form.CustomerQuickEntryForm = class CustomerQuickEntryForm extends fra
                                 ? "Deutschland"
                                 : this.dialog.doc.country;
 
-                            const html_lines = [street, city_line, country].filter(Boolean);
-                            const html = html_lines.join("<br>\n\n    ") + "\n";
+                            const html = [street, city_line, country].filter(Boolean).join(", ");
 
                             // Write it back to Customer so link search shows it immediately
                             frappe.db.set_value("Customer", customer.name, "primary_address", html);
