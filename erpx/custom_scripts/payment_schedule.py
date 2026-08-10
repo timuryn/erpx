@@ -1,15 +1,24 @@
 import frappe
 from frappe.utils import add_days, getdate, flt
 
+COMPANY_NAME = "Werbeteam Dippel GmbH"
+
 @frappe.whitelist()
-def get_customer_payment_setup(customer, posting_date=None, grand_total=0):
+def get_customer_payment_setup(customer, posting_date=None, grand_total=0, company=None):
     """
     Returns complete payment setup for a customer:
     - tc_name, terms text, payment_terms_template, taxes_and_charges
     - pre-calculated payment_schedule rows (with payment_amount)
     - due_date
+
+    Only applies our customer-code mapping when the transaction belongs to
+    our own company. For any other company, returns {} so callers fall back
+    to ERPNext's normal defaults untouched.
     """
     if not customer:
+        return {}
+
+    if company and company != COMPANY_NAME:
         return {}
 
     grand_total = flt(grand_total)
@@ -18,36 +27,42 @@ def get_customer_payment_setup(customer, posting_date=None, grand_total=0):
     mapping = {
         "01478": {
             "tc_name": "Zahlung innerhalb von 21 Tagen",
+            "terms": "Zahlungsbedingungen: Zahlung innerhalb von 21 Tagen ab Rechnungseingang ohne Abzüge.",
             "payment_terms_template": "21 tagen",
             "taxes_and_charges": "Lieferung oder sonstige Leistung im Inland - WDG",
             "payment_description": "Zahlung innerhalb von 21 Tagen ab Rechnungseingang ohne Abzüge."
         },
         "01381": {
             "tc_name": "Zahlung innerhalb von 21 Tagen",
+            "terms": "Zahlungsbedingungen: Zahlung innerhalb von 21 Tagen ab Rechnungseingang ohne Abzüge.",
             "payment_terms_template": "21 tagen",
             "taxes_and_charges": "Lieferung oder sonstige Leistung im Inland - WDG",
             "payment_description": "Zahlung innerhalb von 21 Tagen ab Rechnungseingang ohne Abzüge."
         },
         "01001": {
             "tc_name": "Zahlung innerhalb von 21 Tagen",
+            "terms": "Zahlungsbedingungen: Zahlung innerhalb von 21 Tagen ab Rechnungseingang ohne Abzüge.",
             "payment_terms_template": "21 tagen",
             "taxes_and_charges": "Lieferung oder sonstige Leistung im Inland - WDG",
             "payment_description": "Zahlung innerhalb von 21 Tagen ab Rechnungseingang ohne Abzüge."
         },
         "01060": {
             "tc_name": "Zahlung innerhalb von 30 Tagen",
+            "terms": "Zahlungsbedingungen: Zahlung innerhalb von 30 Tagen ab Rechnungseingang ohne Abzüge.",
             "payment_terms_template": "30 tagen",
             "taxes_and_charges": "Bauleistungen nach § 13b UStG - WDG",
             "payment_description": "Zahlung innerhalb von 30 Tagen ab Rechnungseingang ohne Abzüge."
         },
         "01791": {
             "tc_name": "5 Tage 3% Skonto",
+            "terms": "<p>Zahlung innerhalb 5 Tagen 3% Skonto.</p><p>Zahlung 5-14 Tage voller Betrag.</p>",
             "payment_terms_template": "5 tagen 3% skonto",
             "taxes_and_charges": "Lieferung oder sonstige Leistung im Inland - WDG",
             "payment_description": "Zahlung innerhalb 5 Tagen 3% Skonto. Zahlung 5-14 Tage voller Betrag."
         },
         "01815": {
             "tc_name": "5 Tage 2% Skonto",
+            "terms": "<p>Zahlung innerhalb 5 Tagen 2% Skonto.</p><p>Zahlung 5-14 Tage voller Betrag.</p>",
             "payment_terms_template": "5 tagen 2% skonto",
             "taxes_and_charges": "Lieferung oder sonstige Leistung im Inland - WDG",
             "payment_description": "Zahlung innerhalb 5 Tagen 2% Skonto. Zahlung 5-14 Tage voller Betrag."
@@ -56,6 +71,7 @@ def get_customer_payment_setup(customer, posting_date=None, grand_total=0):
 
     defaults = {
         "tc_name": "Zahlung innerhalb von 14 Tagen",
+        "terms": "Zahlungsbedingungen: Zahlung innerhalb von 14 Tagen ab Rechnungseingang ohne Abzüge.",
         "payment_terms_template": "14 tagen",
         "taxes_and_charges": "Lieferung oder sonstige Leistung im Inland - WDG",
         "payment_description": "Zahlung innerhalb von 14 Tagen ab Rechnungseingang ohne Abzüge."
@@ -63,12 +79,13 @@ def get_customer_payment_setup(customer, posting_date=None, grand_total=0):
 
     config = mapping.get(customer, defaults)
 
-    # Fetch Terms and Conditions text
-    terms_text = ""
+    # Fetch Terms and Conditions text — fall back to the hardcoded mapping text
+    # if the doctype lookup fails, so terms is never silently blank
+    terms_text = config.get("terms", "")
     if config.get("tc_name"):
         try:
             tc_doc = frappe.get_doc("Terms and Conditions", config["tc_name"])
-            terms_text = tc_doc.terms or ""
+            terms_text = tc_doc.terms or terms_text
         except Exception:
             pass
 
