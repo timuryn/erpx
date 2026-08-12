@@ -28,6 +28,9 @@ doc_events = {
         "before_save": "erpx.custom_scripts.project_status_aufwarten.before_save_project",
         "validate": "erpx.custom_scripts.project_status_aufwarten.validate_project_status",
         "on_update": "erpx.custom_scripts.project_status_aufwarten.after_save_project"
+    },
+    "Sales Invoice": {
+        "before_print": "erpx.epcqrcode.sales_invoice.before_print"
     }
 }
 
