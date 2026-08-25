@@ -105,3 +105,8 @@ def _setup_einvoice_13b_override():
         except Exception:
                 pass
 _setup_einvoice_13b_override()
+
+# Override outgoing email Message-ID domain and strip Frappe fingerprint header
+from .email import email_body_override  # noqa: F401  (import triggers the monkey-patch)
+
+make_email_body_message = ["erpx.email.email_body_override.remove_frappe_fingerprint"]
