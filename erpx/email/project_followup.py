@@ -2,6 +2,11 @@
 # Production-ready project followup notification system
 # FIXED: Use email_id instead of account name + flush email queue
 # ADJUSTED: Only send notifications if project status is "Aktion erforderlich!"
+# FIXED (2026-09-01): Exclude auto-generated Comment types (Assigned, Attachment, Like)
+#                      from the timeline-activity reset check — these were falsely
+#                      blocking notifications forever once a project got reassigned.
+# FIXED (2026-09-01): Recurring notification interval now uses "<=" instead of "=="
+#                      so a missed cron run doesn't permanently break the 5-day cadence.
 
 import frappe
 from frappe.utils import getdate, add_days, nowdate
@@ -67,14 +72,16 @@ def check_project_timeline_activity(project):
         )
         timeline_activities.extend(communications)
 
-        # Check for Comments
+        # Check for Comments — exclude auto-generated system comments
+        # (assignment changes, attachments, likes) which are not real user activity
+        # and were previously blocking notifications forever after any reassignment.
         comments = frappe.get_all(
             'Comment',
             filters={
                 'reference_doctype': 'Project',
                 'reference_name': project.name,
                 'creation': ['>', reference_date.strftime('%Y-%m-%d %H:%M:%S')],
-                'comment_type': ['!=', 'Workflow']
+                'comment_type': ['not in', ['Workflow', 'Assigned', 'Attachment', 'Like']]
             },
             fields=['creation']
         )
@@ -230,12 +237,14 @@ def send_recurring_followup_notifications():
 
         if existing_communications:
             last_notification_date = getdate(existing_communications[0].creation)
-            
+
             # Always use 5-day interval
             interval_days_ago = getdate(add_days(nowdate(), -5))
 
-            # Send if interval has passed (exact date match)
-            if last_notification_date == interval_days_ago:
+            # Send if interval has passed or been missed (catch-up instead of
+            # requiring an exact date match, which permanently broke recurrence
+            # whenever a single cron run was skipped or delayed)
+            if last_notification_date <= interval_days_ago:
                 notification_count = len(existing_communications) + 1
                 if send_followup_email(current_project, notification_type="recurring", notification_number=notification_count):
                     sent_count += 1
