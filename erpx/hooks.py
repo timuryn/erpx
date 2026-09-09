@@ -11,7 +11,8 @@ app_include_js = [
     "assets/erpx/js/item_quick_entry.js",
     "assets/erpx/js/sidebar_inject.js",
     "assets/erpx/js/supplier_quick_entry.js",
-    "/assets/erpx/js/navbar_search_clean_url.js"
+    "assets/erpx/js/navbar_search_clean_url.js",
+    "assets/erpx/js/desk_defaults.js"
 ]
 
 # Bigger notification bell and Page width
