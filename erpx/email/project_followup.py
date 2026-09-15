@@ -10,6 +10,7 @@
 
 import frappe
 from frappe.utils import getdate, add_days, nowdate
+from erpx.email.project_aufwarten import send_aufwarten_notifications
 
 def check_project_timeline_activity(project):
     """Check if there was any recent activity in the project timeline that should reset the countdown"""
@@ -129,6 +130,7 @@ def send_project_followup_notifications():
     """
     send_first_followup_notifications()
     send_recurring_followup_notifications()
+    send_aufwarten_notifications()
 
     # IMPORTANT: Flush the email queue to actually send the emails
     frappe.log_error("Flushing email queue...", "Project Followup - Queue Flush")

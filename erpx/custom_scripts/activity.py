@@ -49,6 +49,14 @@ def get_project_heatmap_data(project=None):
     query_end_date = getdate(query_end)
 
     try:
+        # Get the project's own Aufwarten (Erinnerung) reminder fields —
+        # a single date/notice set directly on the Project doc, not a linked table.
+        aufwarten_fields = frappe.db.get_value(
+            'Project', project, ['custom_aufwarten', 'custom_aufwartennotiz'], as_dict=True
+        ) or {}
+        aufwarten_date = aufwarten_fields.get('custom_aufwarten')
+        aufwarten_notiz = aufwarten_fields.get('custom_aufwartennotiz')
+
         # Get timesheet detailed breakdown by activity type for this specific project
         timesheet_detailed_data = frappe.db.sql(
             """select
@@ -172,7 +180,8 @@ def get_project_heatmap_data(project=None):
 
     # If no data for this project, return empty heatmap
     if not timesheet_data and not calendar_events and not status_communications and not tasks \
-            and not quotations and not sales_orders and not delivery_notes and not sales_invoices:
+            and not quotations and not sales_orders and not delivery_notes and not sales_invoices \
+            and not aufwarten_date:
         return get_empty_heatmap_data()
 
     # Convert to lookup dictionaries
@@ -397,6 +406,20 @@ def get_project_heatmap_data(project=None):
                 'hours': 0,
                 'source': 'project_document',
                 'route': route,
+            })
+
+    # Aufwarten (Erinnerung) reminder date set directly on the project, if any
+    if aufwarten_date:
+        aw_date = getdate(aufwarten_date)
+        if query_start_date <= aw_date <= query_end_date:
+            ts = int(datetime.datetime.combine(aw_date, datetime.time()).timestamp())
+            all_data[ts] = all_data.get(ts, 0) + 0.25
+            activity_details.setdefault(ts, {'activities': [], 'total_hours': 0})
+            activity_details[ts]['activities'].append({
+                'type': f"🔔 Auf Warten Erinnerung: {aufwarten_notiz}" if aufwarten_notiz else "🔔 Auf Warten Erinnerung",
+                'notiz': aufwarten_notiz,
+                'hours': 0,
+                'source': 'project_aufwarten',
             })
 
     # Update total hours in activity details
