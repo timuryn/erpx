@@ -4,7 +4,7 @@ from frappe import _
 ALLOWED_PROJECT_STATUSES = [
     "Completed",
     "Cancelled",
-    "AN abgerechnet",
+    "1 AN abgerechnet",
     "Aktion erforderlich!",
     "Angebot erforderlich",
     "Angebot fertig",
@@ -13,6 +13,7 @@ ALLOWED_PROJECT_STATUSES = [
     "Auftrag",
     "Bezahlt / Abgeschlossen",
     "Entwurf",
+    "Neu",
     "Produktion",
     "Rechnung erforderlich",
     "Rechnung raus"

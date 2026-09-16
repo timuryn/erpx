@@ -51,11 +51,21 @@ def get_project_heatmap_data(project=None):
     try:
         # Get the project's own Aufwarten (Erinnerung) reminder fields —
         # a single date/notice set directly on the Project doc, not a linked table.
+        # Also grab creation/owner: "Neu" is now the default status a new project
+        # starts in, but since it's the very first status (nothing to transition
+        # from), the status-change-notification hook never fires for it — so we
+        # mark it directly from the project's own fields instead, the same data
+        # the sidebar's "X created this" timeline entry already comes from.
         aufwarten_fields = frappe.db.get_value(
-            'Project', project, ['custom_aufwarten', 'custom_aufwartennotiz'], as_dict=True
+            'Project', project,
+            ['custom_aufwarten', 'custom_aufwartennotiz', 'creation', 'owner'],
+            as_dict=True
         ) or {}
         aufwarten_date = aufwarten_fields.get('custom_aufwarten')
         aufwarten_notiz = aufwarten_fields.get('custom_aufwartennotiz')
+        project_creation = aufwarten_fields.get('creation')
+        project_owner = aufwarten_fields.get('owner')
+        project_creation_date = getdate(project_creation) if project_creation else None
 
         # Get timesheet detailed breakdown by activity type for this specific project
         timesheet_detailed_data = frappe.db.sql(
@@ -178,10 +188,14 @@ def get_project_heatmap_data(project=None):
         frappe.log_error(f"Error in get_project_heatmap_data: {str(e)}")
         return get_simple_heatmap_data()
 
+    creation_in_window = bool(
+        project_creation_date and query_start_date <= project_creation_date <= query_end_date
+    )
+
     # If no data for this project, return empty heatmap
     if not timesheet_data and not calendar_events and not status_communications and not tasks \
             and not quotations and not sales_orders and not delivery_notes and not sales_invoices \
-            and not aufwarten_date:
+            and not aufwarten_date and not creation_in_window:
         return get_empty_heatmap_data()
 
     # Convert to lookup dictionaries
@@ -284,6 +298,24 @@ def get_project_heatmap_data(project=None):
             'type': f"📌 Status: {new_status}",
             'status': new_status,
             'changed_by': changed_by,
+            'hours': 0,
+            'source': 'project_status',
+        })
+
+    # Mark project creation as an implicit "Neu" status entry (see comment above
+    # on why this can't come from status_communications like other transitions).
+    if creation_in_window:
+        ts = int(datetime.datetime.combine(project_creation_date, datetime.time()).timestamp())
+        owner_full_name = None
+        if project_owner:
+            owner_full_name = frappe.db.get_value("User", project_owner, "full_name") or project_owner
+
+        all_data[ts] = all_data.get(ts, 0) + 0.25
+        activity_details.setdefault(ts, {'activities': [], 'total_hours': 0})
+        activity_details[ts]['activities'].append({
+            'type': "📌 Status: Neu",
+            'status': 'Neu',
+            'changed_by': owner_full_name,
             'hours': 0,
             'source': 'project_status',
         })
