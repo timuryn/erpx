@@ -11,3 +11,11 @@ frappe.ui.form.Sidebar.prototype.refresh = function () {
     }
     this.frm.tags && this.frm.tags.refresh(docinfo && docinfo.tags);
 };
+
+// Default to full width unless the user has explicitly toggled it off
+$(document).ready(function () {
+    if (localStorage.container_fullwidth === undefined) {
+        localStorage.container_fullwidth = "true";
+    }
+    frappe.ui.toolbar.set_fullwidth_if_enabled();
+});
