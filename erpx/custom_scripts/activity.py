@@ -166,7 +166,7 @@ def get_project_heatmap_data(project=None):
             as_dict=True
         )
         delivery_notes = frappe.db.sql(
-            """select name, status, creation
+            """select name, status, creation, custom_lieferdatum
             from `tabDelivery Note`
             where project = %(project)s
             and date(creation) >= %(query_start)s
@@ -269,7 +269,7 @@ def get_project_heatmap_data(project=None):
 
     # Process project status changes (from automated status-notification Communications)
     status_pattern = re.compile(r'Neuer Status:</strong>\s*([^<]+)<br')
-    changed_by_pattern = re.compile(r'Ge\u00e4ndert von:</strong>\s*([^<]+)<br')
+    changed_by_pattern = re.compile(r'Geändert von:</strong>\s*([^<]+)<br')
     user_full_names = {}  # cache to avoid a repeated User lookup per Communication
 
     for c in status_communications:
@@ -439,6 +439,34 @@ def get_project_heatmap_data(project=None):
                 'source': 'project_document',
                 'route': route,
             })
+
+    # Delivery date (custom_lieferdatum) for delivery notes — only plotted when it
+    # falls strictly after the note's own creation date. Same-day or earlier is
+    # already covered by the 📄 Delivery Note marker above and would just duplicate it.
+    for d in delivery_notes:
+        lieferdatum = d.get('custom_lieferdatum')
+        if not lieferdatum:
+            continue
+        liefer_date = getdate(lieferdatum)
+        doc_creation_date = get_datetime(d['creation']).date()
+        if liefer_date <= doc_creation_date:
+            continue
+        if not (query_start_date <= liefer_date <= query_end_date):
+            continue
+
+        ts = int(datetime.datetime.combine(liefer_date, datetime.time()).timestamp())
+        all_data[ts] = all_data.get(ts, 0) + 0.2
+        activity_details.setdefault(ts, {'activities': [], 'total_hours': 0})
+        activity_details[ts]['activities'].append({
+            'type': f"🚚 Lieferdatum: {d['name']}",
+            'doc_type': 'Delivery Note',
+            'doc_name': d['name'],
+            'doc_status': d.get('status'),
+            'color': '#0d9488',
+            'hours': 0,
+            'source': 'delivery_date',
+            'route': 'delivery-note',
+        })
 
     # Aufwarten (Erinnerung) reminder date set directly on the project, if any
     if aufwarten_date:

@@ -21,20 +21,30 @@ app_include_css = [
     "/assets/erpx/css/desk_layout.css"
 ]
 
-# Send email immediately and override custom status Aufwarten for project
+
+# Document event hooks:
+# - Email Queue: send emails immediately
+# - Project: custom status "Aufwarten" handling
+# - Sales Invoice: EPC QR code on print; on submit → submit linked Lieferscheine
+#   and set linked Angebote to "Abgeschlossen"
 doc_events = {
     "Email Queue": {
-    "after_insert": "erpx.email.email_queue.check_and_send_email"
+        "after_insert": "erpx.email.email_queue.check_and_send_email",
     },
     "Project": {
         "before_save": "erpx.custom_scripts.project_status_aufwarten.before_save_project",
         "validate": "erpx.custom_scripts.project_status_aufwarten.validate_project_status",
-        "on_update": "erpx.custom_scripts.project_status_aufwarten.after_save_project"
+        "on_update": "erpx.custom_scripts.project_status_aufwarten.after_save_project",
     },
     "Sales Invoice": {
-        "before_print": "erpx.epcqrcode.sales_invoice.before_print"
-    }
+        "before_print": "erpx.epcqrcode.sales_invoice.before_print",
+        "on_submit": [
+            "erpx.custom_scripts.sales_invoice.submit_linked_delivery_notes",
+            "erpx.custom_scripts.sales_invoice.set_linked_quotations_completed",
+        ],
+    },
 }
+
 
 override_doctype_class = {
     "Email Queue": "erpx.email.email_queue_override.CustomEmailQueue"

@@ -39,6 +39,94 @@ def _recalculate_and_fix_taxes(invoice):
     return invoice, bool(corrected_rows)
 
 
+# ============================================================
+# DOC EVENT HOOK (registered in hooks.py → doc_events)
+# ============================================================
+def submit_linked_delivery_notes(doc, method=None):
+    """
+    on_submit hook for Sales Invoice.
+    Submits all draft Delivery Notes linked via custom_doc_links (LI-prefix).
+    Fires on every submit path: standard button, finalize_invoice, API, bulk.
+    A failing Delivery Note is rolled back on its own and never blocks the invoice.
+    """
+    links = doc.get("custom_doc_links") or ""
+    dn_names = list(dict.fromkeys(
+        n.strip() for n in links.split(",") if n.strip().startswith("LI")
+    ))
+    if not dn_names:
+        return
+
+    submitted, failed = [], []
+
+    for name in dn_names:
+        # Skip missing, already submitted or cancelled Delivery Notes
+        if frappe.db.get_value("Delivery Note", name, "docstatus") != 0:
+            continue
+
+        savepoint = f"dn_submit_{frappe.scrub(name)}"
+        frappe.db.savepoint(savepoint)
+        try:
+            dn = frappe.get_doc("Delivery Note", name)
+            dn.flags.ignore_permissions = True
+            dn.submit()
+            submitted.append(name)
+        except Exception:
+            # Undo only this DN's partial writes, keep the invoice submit intact
+            frappe.db.rollback(save_point=savepoint)
+            failed.append(name)
+            frappe.log_error(
+                title=f"Auto-submit Delivery Note {name} failed",
+                message=frappe.get_traceback(),
+            )
+
+    if submitted:
+        frappe.msgprint(
+            _("Lieferschein(e) gebucht: {0}").format(", ".join(submitted)),
+            indicator="green",
+            alert=True,
+        )
+    if failed:
+        frappe.msgprint(
+            _("Folgende Lieferscheine konnten nicht gebucht werden und müssen manuell geprüft werden:<br><b>{0}</b>")
+            .format(", ".join(failed)),
+            title=_("Lieferschein nicht gebucht"),
+            indicator="orange",
+        )
+
+
+def set_linked_quotations_completed(doc, method=None):
+    """
+    on_submit hook for Sales Invoice.
+    Sets custom_bearbeitungsstatus = "Abgeschlossen" on all Quotations
+    linked via custom_doc_links (AN-prefix).
+    Uses db.set_value so it also works on submitted Quotations.
+    """
+    links = doc.get("custom_doc_links") or ""
+    qtn_names = list(dict.fromkeys(
+        n.strip() for n in links.split(",") if n.strip().startswith("AN")
+    ))
+    if not qtn_names:
+        return
+
+    updated = []
+    for name in qtn_names:
+        current = frappe.db.get_value("Quotation", name, "custom_bearbeitungsstatus")
+        if current is None and not frappe.db.exists("Quotation", name):
+            continue  # linked quotation no longer exists
+        if current == "Abgeschlossen":
+            continue
+
+        frappe.db.set_value("Quotation", name, "custom_bearbeitungsstatus", "Abgeschlossen")
+        updated.append(name)
+
+    if updated:
+        frappe.msgprint(
+            _("Angebot(e) auf Abgeschlossen gesetzt: {0}").format(", ".join(updated)),
+            indicator="green",
+            alert=True,
+        )
+
+
 @frappe.whitelist()
 def allow_edit_submitted_invoice(invoice_id):
     """Allow editing of submitted invoice by properly canceling GL entries"""
@@ -93,6 +181,7 @@ def finalize_invoice(invoice_id):
             invoice.save(ignore_permissions=True)
 
             # Use standard submit method - this handles GL entries and status automatically
+            # (also triggers the on_submit doc_event → submit_linked_delivery_notes)
             invoice.submit()
             invoice.reload()
 
