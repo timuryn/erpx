@@ -68,6 +68,12 @@ def submit_linked_delivery_notes(doc, method=None):
         try:
             dn = frappe.get_doc("Delivery Note", name)
             dn.flags.ignore_permissions = True
+            # Keep the Delivery Note's own date: without set_posting_time,
+            # ERPNext resets posting_date/posting_time to "now" on submit
+            original_date, original_time = dn.posting_date, dn.posting_time
+            dn.set_posting_time = 1
+            dn.posting_date = original_date
+            dn.posting_time = original_time
             dn.submit()
             submitted.append(name)
         except Exception:

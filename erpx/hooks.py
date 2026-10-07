@@ -28,6 +28,7 @@ app_include_css = [
 # - Project: custom status "Aufwarten" handling
 # - Sales Invoice: EPC QR code on print; on submit → submit linked Lieferscheine
 #   and set linked Angebote to "Abgeschlossen"
+# - Delivery Note: keep the existing posting date on save/submit
 doc_events = {
     "Email Queue": {
         "after_insert": "erpx.email.email_queue.check_and_send_email",
@@ -44,16 +45,14 @@ doc_events = {
             "erpx.custom_scripts.sales_invoice.set_linked_quotations_completed",
         ],
     },
+    "Delivery Note": {
+        "before_validate": "erpx.custom_scripts.delivery_note.preserve_posting_date",
+    },
 }
 
 
 override_doctype_class = {
     "Email Queue": "erpx.email.email_queue_override.CustomEmailQueue"
-}
-
-# Project link button and heatmap
-doctype_js = {
-    "Supplier": "public/js/supplier_quick_entry.js"
 }
 
 override_doctype_dashboards = {
